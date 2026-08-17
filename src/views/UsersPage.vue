@@ -30,7 +30,7 @@ interface User {
 }
 
 // Reactive data - sample users
-const users = ref([
+const users = ref<User[]>([
     {
         id: 1,
         name: 'John Doe',

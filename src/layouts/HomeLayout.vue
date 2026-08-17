@@ -1,11 +1,12 @@
 <template>
-    <div class="default-layout">
+    <div class="home-layout">
         <!-- Header -->
         <Header />
 
-        <!-- No Hero Section Here - Just content -->
+        <!-- Hero Section - ONLY on home page -->
+        <HeroSection />
 
-        <!-- Main Content -->
+        <!-- Main Content - Home page content will render here -->
         <main class="main-content">
             <router-view />
         </main>
@@ -18,10 +19,11 @@
 <script setup lang="ts">
 import Header from '@/components/Header.vue'
 import Footer from '@/components/Footer.vue'
+import HeroSection from '@/views/HeroSection.vue';
 </script>
 
 <style scoped>
-.default-layout {
+.home-layout {
     display: flex;
     flex-direction: column;
     min-height: 100vh;

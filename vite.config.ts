@@ -15,4 +15,17 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://mrhomeservices.test:8001',
+        changeOrigin: true,
+      },
+      '/sanctum': {
+        target: 'http://mrhomeservices.test:8001',
+        changeOrigin: true,
+      },
+    },
+  },
 })
+
