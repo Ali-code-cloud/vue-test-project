@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import api from '@/composables/useApi'
 
 interface Review {
     id: number
@@ -7,48 +8,136 @@ interface Review {
     comment: string
     date: string
     rating: number
+    avatar?: string | null
 }
 
-const reviews: Review[] = [
+const reviews = ref<Review[]>([
     {
         id: 1,
-        name: 'Riaz',
-        comment: 'work is good and fast with technical cleaning service.',
-        date: '12/07/2023',
+        name: 'Muhammad Aqib',
+        comment: 'Reliable with standard work done. Fast delivery in good cost, and straight to the point.',
+        date: '12/08/2026',
         rating: 5
     },
     {
         id: 2,
-        name: 'Danial',
-        comment: 'Danial is the best component, he is a professional guy in work, zero messy.',
-        date: '20/07/2023',
+        name: 'Sarah Khan',
+        comment: 'Very polite behavior and great work quality. High recommendation for AC repair.',
+        date: '10/08/2026',
         rating: 5
     },
     {
         id: 3,
-        name: 'Muhammad Aqib',
-        comment: 'Reliable with standard work done. Fast delivery in good cost, and straight to the point.',
-        date: '18/07/2023',
+        name: 'Ali Hassan',
+        comment: 'Prompt service and excellent communication throughout. Solved plumbing issue in minutes.',
+        date: '07/08/2026',
         rating: 5
     },
     {
         id: 4,
-        name: 'Sarah Khan',
-        comment: 'Very polite behavior and great work quality. High recommendation for AC repair.',
-        date: '15/07/2023',
+        name: 'Zainab Ahmed',
+        comment: 'Highly professional team! Arrived on time and did flawless electrical wiring.',
+        date: '04/08/2026',
         rating: 5
     }
-]
+])
 
 const currentIndex = ref(0)
 const isPaused = ref(false)
 let timer: number | null = null
 
-const totalDots = reviews.length - 1
+const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1200)
+
+const updateWidth = () => {
+    windowWidth.value = window.innerWidth
+}
+
+const itemsPerView = computed(() => {
+    if (windowWidth.value <= 600) return 1
+    if (windowWidth.value <= 900) return 2
+    return 3
+})
+
+const totalDots = computed(() => Math.max(1, reviews.value.length - itemsPerView.value + 1))
+
+const trackTransform = computed(() => {
+    const shiftPercent = currentIndex.value * (100 / itemsPerView.value)
+    return `translateX(-${shiftPercent}%)`
+})
+
+const formatDate = (rawDateStr: string) => {
+    if (!rawDateStr) return ''
+    try {
+        const d = new Date(rawDateStr)
+        if (isNaN(d.getTime())) return rawDateStr
+        return d.toLocaleDateString('en-GB')
+    } catch {
+        return rawDateStr
+    }
+}
+
+const formatAvatarUrl = (avatarPath?: string | null) => {
+    if (!avatarPath) return null
+    if (avatarPath.startsWith('http://') || avatarPath.startsWith('https://')) return avatarPath
+    return `http://mrhomeservices.test:8001/${avatarPath.replace(/^\//, '')}`
+}
+
+const fetchReviews = async () => {
+    try {
+        const { data } = await api.get('/api/all-reviews')
+        if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
+            reviews.value = data.data.map((item: any) => ({
+                id: item.id,
+                name: item.customer_name || 'Customer',
+                comment: item.comment || '',
+                date: formatDate(item.review_date || item.created_at),
+                rating: item.rating || 5,
+                avatar: formatAvatarUrl(item.customer_avatar)
+            }))
+            return
+        }
+    } catch (e) {
+        // Fallback to direct fetch or latest endpoint
+    }
+
+    try {
+        const res = await fetch('http://mrhomeservices.test:8001/api/reviews/latest')
+        const resData = await res.json()
+        if (resData?.data && Array.isArray(resData.data) && resData.data.length > 0) {
+            reviews.value = resData.data.map((item: any) => ({
+                id: item.id,
+                name: item.customer_name || 'Customer',
+                comment: item.comment || '',
+                date: formatDate(item.review_date || item.created_at),
+                rating: item.rating || 5,
+                avatar: formatAvatarUrl(item.customer_avatar)
+            }))
+            return
+        }
+    } catch (err) {
+        // Fallback to latest reviews endpoint
+    }
+
+    try {
+        const { data } = await api.get('/api/reviews/latest')
+        if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
+            reviews.value = data.data.map((item: any) => ({
+                id: item.id,
+                name: item.customer_name || 'Customer',
+                comment: item.comment || '',
+                date: formatDate(item.review_date || item.created_at),
+                rating: item.rating || 5,
+                avatar: formatAvatarUrl(item.customer_avatar)
+            }))
+        }
+    } catch (e) {
+        // Keep fallback static reviews if backend offline
+    }
+}
 
 const nextSlide = () => {
-    if (isPaused.value) return
-    currentIndex.value = (currentIndex.value + 1) % totalDots
+    if (isPaused.value || totalDots.value <= 1) return
+    currentIndex.value = (currentIndex.value + 1) % totalDots.value
 }
 
 const setSlide = (index: number) => {
@@ -56,43 +145,43 @@ const setSlide = (index: number) => {
 }
 
 onMounted(() => {
+    window.addEventListener('resize', updateWidth)
+    fetchReviews()
     timer = window.setInterval(nextSlide, 4500)
 })
 
 onUnmounted(() => {
+    window.removeEventListener('resize', updateWidth)
     if (timer) clearInterval(timer)
 })
 </script>
 
 <template>
-    <section 
-        class="reviews-section auto-switch-slider"
-        @mouseenter="isPaused = true" 
-        @mouseleave="isPaused = false"
-    >
+    <section class="reviews-section auto-switch-slider" @mouseenter="isPaused = true" @mouseleave="isPaused = false">
         <h2 class="reviews-title">Our Customers Speak for Us!</h2>
 
         <div class="reviews-slider-window">
-            <div 
-                class="reviews-track"
-                :style="{ transform: `translateX(-${currentIndex * 34}%)` }"
-            >
+            <div class="reviews-track" :style="{ transform: trackTransform }">
                 <div v-for="review in reviews" :key="review.id" class="review-card">
-                    <div class="card-header">
-                        <div class="avatar-circle">
-                            <svg viewBox="0 0 24 24" width="24" height="24" fill="#94A3B8">
-                                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                            </svg>
+                    <div class="review-card-inner">
+                        <div class="card-header">
+                            <div class="avatar-circle">
+                                <img v-if="review.avatar" :src="review.avatar" class="avatar-img" />
+                                <svg v-else viewBox="0 0 24 24" width="24" height="24" fill="#94A3B8">
+                                    <path
+                                        d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                                </svg>
+                            </div>
+                            <span class="user-name">{{ review.name }}</span>
                         </div>
-                        <span class="user-name">{{ review.name }}</span>
-                    </div>
 
-                    <p class="review-text">{{ review.comment }}</p>
+                        <p class="review-text">{{ review.comment }}</p>
 
-                    <div class="card-footer">
-                        <span class="review-date">{{ review.date }}</span>
-                        <div class="star-rating">
-                            <span v-for="n in review.rating" :key="n" class="star">★</span>
+                        <div class="card-footer">
+                            <span class="review-date">{{ review.date }}</span>
+                            <div class="star-rating">
+                                <span v-for="n in review.rating" :key="n" class="star">★</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -100,15 +189,10 @@ onUnmounted(() => {
         </div>
 
         <!-- Slider Dots -->
-        <div class="slider-dots">
-            <button 
-                v-for="(_, index) in totalDots" 
-                :key="index"
-                class="dot-btn"
-                :class="{ active: currentIndex === index }"
-                @click="setSlide(index)"
-                :aria-label="`Review slide ${index + 1}`"
-            ></button>
+        <div v-if="totalDots > 1" class="slider-dots">
+            <button v-for="(_, index) in totalDots" :key="index" class="dot-btn"
+                :class="{ active: currentIndex === index }" @click="setSlide(index)"
+                :aria-label="`Review slide ${index + 1}`"></button>
         </div>
     </section>
 </template>
@@ -133,21 +217,26 @@ onUnmounted(() => {
 
 .reviews-track {
     display: flex;
-    gap: 24px;
     transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 .review-card {
-    min-width: 320px;
-    flex: 0 0 32%;
+    flex: 0 0 33.333%;
+    min-width: 33.333%;
+    box-sizing: border-box;
+    padding: 0 12px;
+}
+
+.review-card-inner {
     background: #ffffff;
     border: 1px solid #E2E8F0;
-    border-radius: 12px;
+    border-radius: 16px;
     padding: 24px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+    height: 100%;
 }
 
 .card-header {
@@ -165,6 +254,13 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
+}
+
+.avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 
 .user-name {
@@ -227,14 +323,36 @@ onUnmounted(() => {
 }
 
 @media (max-width: 900px) {
+    .reviews-section {
+        padding: 40px 0;
+    }
+
+    .reviews-title {
+        font-size: 1.75rem;
+        margin-bottom: 24px;
+    }
+
     .review-card {
-        flex: 0 0 75%;
+        flex: 0 0 50%;
+        min-width: 50%;
+        padding: 0 8px;
     }
 }
 
-@media (max-width: 500px) {
+@media (max-width: 600px) {
+    .reviews-section {
+        padding: 30px 0;
+    }
+
+    .reviews-title {
+        font-size: 1.5rem;
+        margin-bottom: 20px;
+    }
+
     .review-card {
-        flex: 0 0 90%;
+        flex: 0 0 100%;
+        min-width: 100%;
+        padding: 0 4px;
     }
 }
 </style>

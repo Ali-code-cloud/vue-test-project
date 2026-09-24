@@ -40,29 +40,29 @@
       <!-- Contact Form -->
       <div class="contact-form-card">
         <h3>Send Us a Message</h3>
-        <form @submit.prevent="handleSubmit" class="contact-form">
+        <form @submit.prevent="handleSubmit" class="contact-form" novalidate>
           <div v-if="submittedMsg" class="success-banner">
             {{ submittedMsg }}
           </div>
 
           <div class="form-group">
             <label>Your Name</label>
-            <input type="text" v-model="form.name" required placeholder="Ali Ahmed" class="input-field" />
+            <input type="text" v-model="form.name" placeholder="Ali Ahmed" class="input-field" />
           </div>
 
           <div class="form-group">
             <label>Email Address</label>
-            <input type="email" v-model="form.email" required placeholder="ali@example.com" class="input-field" />
+            <input type="email" v-model="form.email" placeholder="ali@example.com" class="input-field" />
           </div>
 
           <div class="form-group">
             <label>Subject</label>
-            <input type="text" v-model="form.subject" required placeholder="Inquiry about AC Service" class="input-field" />
+            <input type="text" v-model="form.subject" placeholder="Inquiry about AC Service" class="input-field" />
           </div>
 
           <div class="form-group">
             <label>Message</label>
-            <textarea v-model="form.message" rows="4" required placeholder="How can we assist you?" class="input-field"></textarea>
+            <textarea v-model="form.message" rows="4" placeholder="How can we assist you?" class="input-field"></textarea>
           </div>
 
           <button type="submit" class="btn-submit">Submit Message</button>
@@ -74,6 +74,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { showSuccessToast } from '@/utils/alert'
 
 const form = ref({
   name: '',
@@ -86,6 +87,7 @@ const submittedMsg = ref('')
 
 const handleSubmit = () => {
   submittedMsg.value = 'Thank you! Your message has been sent successfully. Our support team will contact you shortly.'
+  showSuccessToast('Message sent successfully!')
   form.value = { name: '', email: '', subject: '', message: '' }
   setTimeout(() => {
     submittedMsg.value = ''

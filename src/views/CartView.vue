@@ -14,7 +14,7 @@
         <div class="empty-icon">🛒</div>
         <h2>Your Cart is Empty</h2>
         <p>You haven't added any home services to your cart yet.</p>
-        <button class="btn-browse-services" @click="router.push('/services/category/4')">
+        <button class="btn-browse-services" @click="router.push('/services')">
           Browse AC & Home Services
         </button>
       </div>
@@ -31,13 +31,9 @@
 
             <!-- Days Selector Strip -->
             <div class="days-slider">
-              <button 
-                v-for="day in calendarDays" 
-                :key="day.dateNum" 
-                class="day-pill" 
+              <button v-for="day in calendarDays" :key="day.dateNum" class="day-pill"
                 :class="{ active: cartStore.selectedDateNum === day.dateNum }"
-                @click="cartStore.selectedDateNum = day.dateNum"
-              >
+                @click="cartStore.selectedDateNum = day.dateNum">
                 <span class="day-num">{{ day.dateNum }}</span>
                 <span class="day-name">{{ day.dayName }}</span>
               </button>
@@ -45,13 +41,8 @@
 
             <!-- Time Slots Grid -->
             <div class="time-slots-grid">
-              <button 
-                v-for="time in timeSlots" 
-                :key="time" 
-                class="time-pill" 
-                :class="{ active: cartStore.selectedTimeSlot === time }"
-                @click="cartStore.selectedTimeSlot = time"
-              >
+              <button v-for="time in timeSlots" :key="time" class="time-pill"
+                :class="{ active: cartStore.selectedTimeSlot === time }" @click="cartStore.selectedTimeSlot = time">
                 {{ time }}
               </button>
             </div>
@@ -74,13 +65,9 @@
           <div class="checkout-section-box">
             <h3 class="checkout-section-title">Items</h3>
             <div class="checkout-items-list">
-              <div 
-                v-for="item in cartStore.cartItemsList" 
-                :key="item.service.id" 
-                class="checkout-item-row"
-              >
+              <div v-for="item in cartStore.cartItemsList" :key="item.service.id" class="checkout-item-row">
                 <img :src="getImageUrl(item.service.image)" class="checkout-item-img" alt="Service" />
-                
+
                 <div class="checkout-item-details">
                   <h4>{{ item.service.name }}</h4>
                   <div class="checkout-item-price">
@@ -109,12 +96,8 @@
           <!-- 1. Billing Card -->
           <div class="billing-card">
             <h3 class="billing-title">Billing</h3>
-            
-            <div 
-              v-for="item in cartStore.cartItemsList" 
-              :key="item.service.id" 
-              class="billing-row"
-            >
+
+            <div v-for="item in cartStore.cartItemsList" :key="item.service.id" class="billing-row">
               <span>{{ item.service.name }} (i)</span>
               <span>Rs: {{ Math.round(Number(item.service.discounted_price)) }} X {{ item.quantity }}</span>
             </div>
@@ -143,15 +126,9 @@
           <div class="upload-section-card">
             <h4 class="upload-title">Problem Image</h4>
             <p class="upload-desc">Add Screenshots</p>
-            
+
             <div class="upload-box" @click="triggerImageUpload">
-              <input 
-                type="file" 
-                ref="fileInput" 
-                class="hidden-file-input" 
-                @change="onFileSelected" 
-                accept="image/*" 
-              />
+              <input type="file" ref="fileInput" class="hidden-file-input" @change="onFileSelected" accept="image/*" />
               <div v-if="cartStore.uploadedPreview" class="preview-wrap">
                 <img :src="cartStore.uploadedPreview" class="preview-img" alt="Problem Screenshot" />
               </div>
@@ -164,12 +141,8 @@
           <!-- 3. Additional Information -->
           <div class="additional-info-card">
             <h4 class="info-card-title">Additional Information</h4>
-            <textarea 
-              v-model="cartStore.problemMessage" 
-              rows="4" 
-              class="problem-textarea" 
-              placeholder="Problem message..."
-            ></textarea>
+            <textarea v-model="cartStore.problemMessage" rows="4" class="problem-textarea"
+              placeholder="Problem message..."></textarea>
           </div>
         </div>
       </div>
@@ -184,8 +157,8 @@
             <span class="cart-total-text">Rs {{ cartStore.totalCartPrice }}</span>
           </div>
 
-          <button class="btn-place-order pulse-anim" @click="handlePlaceOrder">
-            Place Order →
+          <button class="btn-place-order pulse-anim" :disabled="isPlacingOrder" @click="handlePlaceOrder">
+            {{ isPlacingOrder ? 'Placing Order...' : 'Place Order →' }}
           </button>
         </div>
       </div>
@@ -196,8 +169,9 @@
       <div class="success-modal-card">
         <div class="success-icon-circle">✓</div>
         <h2>Booking Order Confirmed!</h2>
-        <p>Your Mr Home Services request has been received. Our expert technician will visit on August {{ cartStore.selectedDateNum }}, at {{ cartStore.selectedTimeSlot }}.</p>
-        
+        <p>Your Mr Home Services request has been received. Our team will visit on August {{
+          cartStore.selectedDateNum }}, at {{ cartStore.selectedTimeSlot }}.</p>
+
         <div class="modal-order-details">
           <p><strong>Address:</strong> {{ cartStore.selectedAddress }}</p>
           <p><strong>Total Amount:</strong> Rs {{ cartStore.totalCartPrice }}</p>
@@ -216,11 +190,16 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCartStore } from '@/stores/cart'
+import { useAuthStore } from '@/stores/auth'
+import { showPromptAlert, showErrorAlert } from '@/utils/alert'
 
 const router = useRouter()
 const cartStore = useCartStore()
+const authStore = useAuthStore()
 
 const fileInput = ref<any>(null)
+const isPlacingOrder = ref(false)
+const orderError = ref('')
 
 const calendarDays = [
   { dateNum: 17, dayName: 'Mon' },
@@ -241,7 +220,7 @@ const calendarDays = [
 ]
 
 const timeSlots = [
-  '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM', 
+  '09:00 AM', '09:30 AM', '10:00 AM', '11:00 AM', '11:30 AM',
   '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM', '02:00 PM'
 ]
 
@@ -252,13 +231,13 @@ function getImageUrl(imagePath?: string | null): string {
 }
 
 const goBack = () => {
-  router.push('/services/category/4')
+  router.push('/services')
 }
 
-const openAddAddressModal = () => {
-  const newAddr = prompt('Enter your complete delivery address:', cartStore.selectedAddress)
-  if (newAddr && newAddr.trim()) {
-    cartStore.selectedAddress = newAddr.trim()
+const openAddAddressModal = async () => {
+  const result = await showPromptAlert('Delivery Address', 'Enter your complete delivery address:', cartStore.selectedAddress)
+  if (result.isConfirmed && result.value && result.value.trim()) {
+    cartStore.selectedAddress = result.value.trim()
   }
 }
 
@@ -275,13 +254,48 @@ const onFileSelected = (e: any) => {
   }
 }
 
-const handlePlaceOrder = () => {
-  cartStore.showSuccessModal = true
+const handlePlaceOrder = async () => {
+  orderError.value = ''
+  if (!authStore.isAuthenticated) {
+    cartStore.openAuthModal()
+    return
+  }
+
+  const userAddress = (authStore.user?.address || cartStore.selectedAddress || '').trim()
+  if (!userAddress) {
+    const result = await showPromptAlert('Address Required', 'Please enter your delivery address to place an order:', cartStore.selectedAddress)
+    if (result.isConfirmed && result.value && result.value.trim()) {
+      cartStore.selectedAddress = result.value.trim()
+    } else {
+      await showErrorAlert('Address Required', 'Address field is required. Please fill in your address to place an order.')
+      return
+    }
+  }
+
+  const userPhone = (authStore.user?.phone || cartStore.userPhoneNumber || '').trim()
+  if (!userPhone) {
+    const result = await showPromptAlert('Phone Number Required', 'Please confirm your phone number before placing an order:', cartStore.userPhoneNumber)
+    if (result.isConfirmed && result.value && result.value.trim()) {
+      cartStore.userPhoneNumber = result.value.trim()
+    } else {
+      await showErrorAlert('Phone Required', 'Phone number is required. Please confirm your phone number before placing an order.')
+      return
+    }
+  }
+
+  isPlacingOrder.value = true
+  try {
+    await cartStore.placeOrder()
+  } catch (err: any) {
+    orderError.value = err.message || 'Failed to place order. Please try again.'
+    await showErrorAlert('Order Placement Failed', orderError.value)
+  } finally {
+    isPlacingOrder.value = false
+  }
 }
 
 const finishOrder = () => {
   cartStore.showSuccessModal = false
-  cartStore.clearCart()
   router.push('/dashboard')
 }
 </script>
@@ -416,8 +430,14 @@ const finishOrder = () => {
   border-color: #1A56DB;
 }
 
-.day-num { font-size: 14px; font-weight: 800; }
-.day-name { font-size: 11px; }
+.day-num {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.day-name {
+  font-size: 11px;
+}
 
 /* Time Slots */
 .time-slots-grid {
@@ -452,8 +472,17 @@ const finishOrder = () => {
   align-items: center;
 }
 
-.address-title { font-size: 16px; font-weight: 800; color: #0F172A; margin-bottom: 4px; }
-.address-subtitle { font-size: 14px; color: #64748B; }
+.address-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0F172A;
+  margin-bottom: 4px;
+}
+
+.address-subtitle {
+  font-size: 14px;
+  color: #64748B;
+}
 
 .btn-add-address {
   color: #1A56DB;
@@ -488,10 +517,28 @@ const finishOrder = () => {
   object-fit: cover;
 }
 
-.checkout-item-details { flex: 1; }
-.checkout-item-details h4 { font-size: 14px; font-weight: 700; color: #0F172A; }
-.old-price { font-size: 12px; color: #94A3B8; text-decoration: line-through; margin-right: 6px; }
-.new-price { font-size: 14px; font-weight: 800; color: #0F172A; }
+.checkout-item-details {
+  flex: 1;
+}
+
+.checkout-item-details h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0F172A;
+}
+
+.old-price {
+  font-size: 12px;
+  color: #94A3B8;
+  text-decoration: line-through;
+  margin-right: 6px;
+}
+
+.new-price {
+  font-size: 14px;
+  font-weight: 800;
+  color: #0F172A;
+}
 
 /* Stepper [- 1 +] */
 .stepper-box {
@@ -540,13 +587,49 @@ const finishOrder = () => {
   margin-bottom: 24px;
 }
 
-.billing-title { font-size: 18px; font-weight: 800; color: #0F172A; margin-bottom: 16px; }
-.billing-row { display: flex; justify-content: space-between; font-size: 14px; color: #475569; margin-bottom: 8px; }
-.billing-divider { height: 1px; background: #E2E8F0; margin: 12px 0; }
-.bold-text { font-weight: 800; color: #0F172A; }
-.cash-badge { font-weight: 700; color: #15803D; }
-.total-row { font-size: 16px; font-weight: 800; color: #0F172A; margin-top: 8px; }
-.total-price-text { color: #0F172A; font-size: 18px; font-weight: 800; }
+.billing-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0F172A;
+  margin-bottom: 16px;
+}
+
+.billing-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: #475569;
+  margin-bottom: 8px;
+}
+
+.billing-divider {
+  height: 1px;
+  background: #E2E8F0;
+  margin: 12px 0;
+}
+
+.bold-text {
+  font-weight: 800;
+  color: #0F172A;
+}
+
+.cash-badge {
+  font-weight: 700;
+  color: #15803D;
+}
+
+.total-row {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0F172A;
+  margin-top: 8px;
+}
+
+.total-price-text {
+  color: #0F172A;
+  font-size: 18px;
+  font-weight: 800;
+}
 
 /* Upload Section */
 .upload-section-card {
@@ -557,8 +640,18 @@ const finishOrder = () => {
   margin-bottom: 24px;
 }
 
-.upload-title { font-size: 16px; font-weight: 800; color: #0F172A; margin-bottom: 2px; }
-.upload-desc { font-size: 13px; color: #64748B; margin-bottom: 12px; }
+.upload-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0F172A;
+  margin-bottom: 2px;
+}
+
+.upload-desc {
+  font-size: 13px;
+  color: #64748B;
+  margin-bottom: 12px;
+}
 
 .upload-box {
   width: 70px;
@@ -573,9 +666,20 @@ const finishOrder = () => {
   overflow: hidden;
 }
 
-.hidden-file-input { display: none; }
-.plus-large { font-size: 24px; color: #64748B; }
-.preview-img { width: 100%; height: 100%; object-fit: cover; }
+.hidden-file-input {
+  display: none;
+}
+
+.plus-large {
+  font-size: 24px;
+  color: #64748B;
+}
+
+.preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 
 /* Additional Info */
 .additional-info-card {
@@ -585,7 +689,13 @@ const finishOrder = () => {
   padding: 20px;
 }
 
-.info-card-title { font-size: 16px; font-weight: 800; color: #0F172A; margin-bottom: 10px; }
+.info-card-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0F172A;
+  margin-bottom: 10px;
+}
+
 .problem-textarea {
   width: 100%;
   border: 1px solid #CBD5E1;
@@ -656,16 +766,24 @@ const finishOrder = () => {
 }
 
 @keyframes subtlePulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.04); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.04);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* Modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.6);
+  background: rgba(0, 0, 0, 0.6);
   z-index: 2000;
   display: flex;
   align-items: center;
@@ -680,7 +798,7 @@ const finishOrder = () => {
   max-width: 440px;
   width: 100%;
   text-align: center;
-  box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
 }
 
 .success-icon-circle {
@@ -697,9 +815,28 @@ const finishOrder = () => {
   margin: 0 auto 16px;
 }
 
-.success-modal-card h2 { font-size: 22px; font-weight: 800; color: #0F172A; margin-bottom: 8px; }
-.success-modal-card p { font-size: 14px; color: #64748B; line-height: 1.5; margin-bottom: 20px; }
-.modal-order-details { background: #F8FAFC; padding: 14px; border-radius: 12px; margin-bottom: 24px; text-align: left; }
+.success-modal-card h2 {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0F172A;
+  margin-bottom: 8px;
+}
+
+.success-modal-card p {
+  font-size: 14px;
+  color: #64748B;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.modal-order-details {
+  background: #F8FAFC;
+  padding: 14px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  text-align: left;
+}
+
 .btn-modal-close {
   background: #1A56DB;
   color: white;
@@ -713,6 +850,59 @@ const finishOrder = () => {
 }
 
 @media (max-width: 900px) {
-  .checkout-grid { grid-template-columns: 1fr; }
+  .checkout-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .cart-page-container {
+    padding: 20px 12px 140px;
+  }
+
+  .cart-top-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .cart-page-title {
+    font-size: 20px;
+  }
+
+  .checkout-section-box,
+  .billing-card,
+  .upload-section-card,
+  .additional-info-card {
+    padding: 16px 12px;
+    border-radius: 12px;
+  }
+
+  .time-slots-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .checkout-item-row {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .checkout-item-img {
+    width: 44px;
+    height: 44px;
+  }
+
+  .floating-cart-bar {
+    left: 12px;
+    right: 12px;
+    bottom: 16px;
+    width: calc(100% - 24px);
+  }
+
+  .floating-bar-inner {
+    justify-content: space-between;
+    width: 100%;
+    padding: 8px 12px 8px 16px;
+  }
 }
 </style>

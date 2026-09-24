@@ -1,21 +1,107 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore, getApiError } from '@/stores/auth'
+import api from '@/composables/useApi'
+import { showSuccessToast, showErrorToast } from '@/utils/alert'
+
+const router = useRouter()
+const authStore = useAuthStore()
 
 const form = ref({
+    name: authStore.user?.name || '',
+    phone: authStore.user?.phone || '',
+    message: ''
+})
+
+const formErrors = ref({
     name: '',
     phone: '',
     message: ''
 })
 
-const isSubmitted = ref(false)
+const clearFormErrors = () => {
+    formErrors.value = {
+        name: '',
+        phone: '',
+        message: ''
+    }
+}
 
-const handleSubmit = () => {
-    if (form.value.name && form.value.phone && form.value.message) {
-        isSubmitted.value = true
-        setTimeout(() => {
-            isSubmitted.value = false
-            form.value = { name: '', phone: '', message: '' }
-        }, 3000)
+const isSubmitting = ref(false)
+const errorMessage = ref('')
+
+const handleSubmit = async () => {
+    errorMessage.value = ''
+    clearFormErrors()
+
+    // Check if user is logged in
+    if (!authStore.isAuthenticated || !authStore.user) {
+        showErrorToast('Please sign in to file a complaint.')
+        authStore.logout()
+        router.push('/login')
+        return
+    }
+
+    let hasClientError = false
+    if (!form.value.name.trim()) {
+        formErrors.value.name = 'The name field is required.'
+        hasClientError = true
+    }
+    if (!form.value.phone.trim()) {
+        formErrors.value.phone = 'The phone number field is required.'
+        hasClientError = true
+    }
+    if (!form.value.message.trim()) {
+        formErrors.value.message = 'The message field is required.'
+        hasClientError = true
+    }
+
+    if (hasClientError) {
+        showErrorToast('Please fix the errors in the form.')
+        return
+    }
+
+    isSubmitting.value = true
+
+    try {
+        const { data } = await api.post('/api/complaint', {
+            name: (form.value.name || '').trim(),
+            phone: (form.value.phone || '').trim(),
+            email: authStore.user?.email || '',
+            message: (form.value.message || '').trim()
+        })
+
+        if (data?.status === false) {
+            if (data?.errors) {
+                if (data.errors.name) formErrors.value.name = Array.isArray(data.errors.name) ? data.errors.name[0] : data.errors.name
+                if (data.errors.phone) formErrors.value.phone = Array.isArray(data.errors.phone) ? data.errors.phone[0] : data.errors.phone
+                if (data.errors.message) formErrors.value.message = Array.isArray(data.errors.message) ? data.errors.message[0] : data.errors.message
+            }
+            throw new Error(data.message || 'Failed to submit complaint.')
+        }
+
+        showSuccessToast(data?.message || 'Your complaint has been submitted successfully!')
+
+        form.value = {
+            name: authStore.user?.name || '',
+            phone: authStore.user?.phone || '',
+            message: ''
+        }
+        clearFormErrors()
+
+    } catch (error: any) {
+        if (error.response?.data?.errors) {
+            const errs = error.response.data.errors
+            if (errs.name) formErrors.value.name = Array.isArray(errs.name) ? errs.name[0] : errs.name
+            if (errs.phone) formErrors.value.phone = Array.isArray(errs.phone) ? errs.phone[0] : errs.phone
+            if (errs.message) formErrors.value.message = Array.isArray(errs.message) ? errs.message[0] : errs.message
+        }
+        const msg = getApiError(error)
+        errorMessage.value = msg
+        showErrorToast(msg)
+    } finally {
+        isSubmitting.value = false
     }
 }
 </script>
@@ -23,38 +109,51 @@ const handleSubmit = () => {
 <template>
     <section class="complaint-section">
         <div class="complaint-container">
+
             <!-- Left Info -->
             <div class="complaint-info">
-                <h2 class="complaint-heading">Resolving your complaints!</h2>
+                <h2 class="complaint-heading">
+                    Resolving your complaints!
+                </h2>
+
                 <p class="complaint-subtext">
-                    Write your complaint here to help us make our service better for you.
+                    Write your complaint here to help us make our service
+                    better for you.
                 </p>
             </div>
 
             <!-- Right Form Card -->
             <div class="complaint-form-card">
-                <div v-if="isSubmitted" class="success-message">
-                    ✅ Thank you! Your complaint has been submitted successfully.
+
+                <!-- Error Alert -->
+                <div v-if="errorMessage" class="error-message">
+                    ❌ {{ errorMessage }}
                 </div>
-                <form v-else @submit.prevent="handleSubmit" class="complaint-form">
+
+                <form @submit.prevent="handleSubmit" class="complaint-form" novalidate>
                     <div class="form-row">
                         <div class="form-group">
                             <input 
                                 v-model="form.name" 
                                 type="text" 
                                 placeholder="Name *" 
-                                class="form-input"
-                                required
+                                class="form-input" 
+                                :class="{ 'has-error': formErrors.name }"
+                                @input="formErrors.name = ''"
                             />
+                            <span v-if="formErrors.name" class="text-danger-error">{{ formErrors.name }}</span>
                         </div>
+
                         <div class="form-group">
                             <input 
                                 v-model="form.phone" 
                                 type="tel" 
                                 placeholder="Phone number *" 
-                                class="form-input"
-                                required
+                                class="form-input" 
+                                :class="{ 'has-error': formErrors.phone }"
+                                @input="formErrors.phone = ''"
                             />
+                            <span v-if="formErrors.phone" class="text-danger-error">{{ formErrors.phone }}</span>
                         </div>
                     </div>
 
@@ -64,14 +163,19 @@ const handleSubmit = () => {
                             placeholder="Message *" 
                             rows="3" 
                             class="form-textarea"
-                            required
+                            :class="{ 'has-error': formErrors.message }"
+                            @input="formErrors.message = ''"
                         ></textarea>
+                        <span v-if="formErrors.message" class="text-danger-error">{{ formErrors.message }}</span>
                     </div>
 
                     <div class="form-action">
-                        <button type="submit" class="btn-submit">Submit</button>
+                        <button type="submit" class="btn-submit" :disabled="isSubmitting">
+                            {{ isSubmitting ? 'Submitting...' : 'Submit' }}
+                        </button>
                     </div>
                 </form>
+
             </div>
         </div>
     </section>
@@ -147,6 +251,7 @@ const handleSubmit = () => {
     outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
     font-family: inherit;
+    box-sizing: border-box;
 }
 
 .form-textarea {
@@ -166,7 +271,7 @@ const handleSubmit = () => {
 }
 
 .btn-submit {
-    background: #60A5FA;
+    background: #5096F6;
     color: white;
     border: none;
     border-radius: 20px;
@@ -181,20 +286,25 @@ const handleSubmit = () => {
     background: #1A56DB;
 }
 
-.success-message {
-    padding: 20px;
-    background: #F0FDF4;
-    color: #15803D;
+.btn-submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.error-message {
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    background: #FEF2F2;
+    color: #B91C1C;
     border-radius: 8px;
-    font-weight: 600;
-    text-align: center;
+    font-size: 14px;
 }
 
 @media (max-width: 800px) {
     .complaint-container {
         flex-direction: column;
     }
-    
+
     .complaint-info {
         max-width: 100%;
         text-align: center;
@@ -202,11 +312,16 @@ const handleSubmit = () => {
 
     .complaint-form-card {
         width: 100%;
+        box-sizing: border-box;
     }
 
     .form-row {
         flex-direction: column;
-        gap: 16px;
+        gap: 0;
+    }
+
+    .form-row .form-group {
+        margin-bottom: 16px;
     }
 }
 </style>

@@ -5,7 +5,7 @@
       <h3>Forgot Password?</h3>
       <p class="step-desc">Enter your registered email to receive a verification OTP code.</p>
 
-      <form @submit.prevent="handleSendOtp" class="auth-form">
+      <form @submit.prevent="handleSendOtp" class="auth-form" novalidate>
         <div v-if="errorMsg" class="error-alert">{{ errorMsg }}</div>
         <div v-if="successMsg" class="success-alert">{{ successMsg }}</div>
 
@@ -15,7 +15,6 @@
             type="email" 
             v-model="email" 
             placeholder="user@example.com" 
-            required 
             class="input-field"
           />
         </div>
@@ -38,7 +37,7 @@
         We sent a 6-digit code to <strong>{{ email }}</strong>
       </p>
 
-      <form @submit.prevent="handleVerifyOtp" class="auth-form">
+      <form @submit.prevent="handleVerifyOtp" class="auth-form" novalidate>
         <div v-if="errorMsg" class="error-alert">{{ errorMsg }}</div>
         <div v-if="successMsg" class="success-alert">{{ successMsg }}</div>
 
@@ -56,7 +55,6 @@
               :ref="el => otpRefs[idx] = el"
               class="otp-digit-box"
               inputmode="numeric"
-              required 
             />
           </div>
         </div>
@@ -89,7 +87,7 @@
       <h3>Set New Password</h3>
       <p class="step-desc">Create a new secure password for your account.</p>
 
-      <form @submit.prevent="handleResetPassword" class="auth-form">
+      <form @submit.prevent="handleResetPassword" class="auth-form" novalidate>
         <div v-if="errorMsg" class="error-alert">{{ errorMsg }}</div>
         <div v-if="successMsg" class="success-alert">{{ successMsg }}</div>
 
@@ -99,7 +97,6 @@
             type="password" 
             v-model="newPassword" 
             placeholder="At least 8 characters" 
-            required 
             class="input-field"
           />
         </div>
@@ -110,7 +107,6 @@
             type="password" 
             v-model="confirmPassword" 
             placeholder="Repeat new password" 
-            required 
             class="input-field"
           />
         </div>
@@ -128,6 +124,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore, getApiError } from '@/stores/auth'
+import { showSuccessToast, showErrorToast } from '@/utils/alert'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -164,23 +161,21 @@ const startResendTimer = () => {
 const handleSendOtp = async () => {
   errorMsg.value = ''
   successMsg.value = ''
-  if (!email.value.trim()) {
-    errorMsg.value = 'Please enter your email address.'
-    return
-  }
 
   isLoading.value = true
   try {
-    const data = await authStore.forgotPassword(email.value)
+    const data = await authStore.forgotPassword(email.value.trim())
     successMsg.value = data.message || 'OTP sent successfully!'
+    showSuccessToast(successMsg.value)
     currentStep.value = 2
     otpDigits.value = ['', '', '', '', '', '']
     startResendTimer()
     setTimeout(() => {
       if (otpRefs.value[0]) otpRefs.value[0].focus()
     }, 100)
-  } catch (e) {
+  } catch (e: any) {
     errorMsg.value = getApiError(e)
+    showErrorToast(errorMsg.value)
   } finally {
     isLoading.value = false
   }
@@ -209,19 +204,17 @@ const handleVerifyOtp = async () => {
   errorMsg.value = ''
   successMsg.value = ''
   const enteredOtp = otpDigits.value.join('')
-  if (enteredOtp.length < 6) {
-    errorMsg.value = 'Please enter the full 6-digit OTP code.'
-    return
-  }
 
   isLoading.value = true
   try {
     const data = await authStore.verifyOtp(email.value, enteredOtp)
     verifiedOtp.value = enteredOtp
     successMsg.value = data.message || 'OTP verified!'
+    showSuccessToast('OTP verified!')
     currentStep.value = 3
-  } catch (e) {
+  } catch (e: any) {
     errorMsg.value = getApiError(e)
+    showErrorToast(errorMsg.value)
   } finally {
     isLoading.value = false
   }
@@ -231,14 +224,6 @@ const handleVerifyOtp = async () => {
 const handleResetPassword = async () => {
   errorMsg.value = ''
   successMsg.value = ''
-  if (newPassword.value !== confirmPassword.value) {
-    errorMsg.value = 'Passwords do not match!'
-    return
-  }
-  if (newPassword.value.length < 8) {
-    errorMsg.value = 'Password must be at least 8 characters.'
-    return
-  }
 
   isLoading.value = true
   try {
@@ -249,11 +234,13 @@ const handleResetPassword = async () => {
       password_confirmation: confirmPassword.value
     })
     successMsg.value = data.message || 'Password reset successfully! Redirecting to login...'
+    showSuccessToast('Password reset successfully!')
     setTimeout(() => {
       router.push('/login')
     }, 2000)
-  } catch (e) {
+  } catch (e: any) {
     errorMsg.value = getApiError(e)
+    showErrorToast(errorMsg.value)
   } finally {
     isLoading.value = false
   }
@@ -425,5 +412,17 @@ const handleResetPassword = async () => {
 
 .back-link-btn:hover {
   color: #0F172A;
+}
+
+@media (max-width: 480px) {
+  .otp-inputs {
+    gap: 4px;
+  }
+
+  .otp-digit-box {
+    width: 36px;
+    height: 46px;
+    font-size: 18px;
+  }
 }
 </style>

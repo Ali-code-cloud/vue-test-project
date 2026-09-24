@@ -2,13 +2,6 @@
     <div class="auth-layout">
         <div class="auth-container">
             <div class="auth-card">
-                <div class="auth-header">
-                    <router-link to="/" class="auth-logo">
-                        <span class="logo-bold">Mr Home</span> <span class="logo-sub">Services</span>
-                    </router-link>
-                    <h2>{{ headerTitle }}</h2>
-                    <p>{{ headerSub }}</p>
-                </div>
                 <router-view />
             </div>
         </div>
@@ -46,14 +39,14 @@ const headerSub = computed(() => {
 
 .auth-container {
     width: 100%;
-    max-width: 440px;
+    max-width: 680px;
 }
 
 .auth-card {
-    background: white;
-    border-radius: 20px;
-    padding: 36px 32px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+    background: #ffffff;
+    border-radius: 28px;
+    padding: 56px 40px 48px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
 }
 
 .auth-header {

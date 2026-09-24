@@ -70,6 +70,39 @@ const routes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/blog',
+    component: DefaultLayout,
+    children: [
+      {
+        path: '',
+        name: 'blog',
+        component: () => import('@/views/BlogView.vue')
+      }
+    ]
+  },
+  {
+    path: '/terms',
+    component: DefaultLayout,
+    children: [
+      {
+        path: '',
+        name: 'terms',
+        component: () => import('@/views/TermsView.vue')
+      }
+    ]
+  },
+  {
+    path: '/privacy',
+    component: DefaultLayout,
+    children: [
+      {
+        path: '',
+        name: 'privacy',
+        component: () => import('@/views/PrivacyView.vue')
+      }
+    ]
+  },
+  {
     path: '/login',
     component: AuthLayout,
     meta: { guestOnly: true },

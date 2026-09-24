@@ -134,7 +134,7 @@
 
           <p class="seo-paragraph">
             Searching for these experts is a difficult task itself. That's where Mr Home Services jumps in,
-            offering the best {{ categoryName }} services in Lahore and Karachi, helping you find the best {{ categoryName }} Technicians to do your job.
+            offering the best {{ categoryName }} services in Lahore and Karachi, helping you get the best {{ categoryName }} services done.
           </p>
 
           <h3 class="seo-subheading">Our Honesty Goes a Long Way</h3>
@@ -144,7 +144,7 @@
             <li>✓ exceptional customer service</li>
             <li>✓ 24/7 repair services – No extra charge</li>
             <li>✓ fast & reliable</li>
-            <li>✓ professionally trained expert technicians</li>
+            <li>✓ professionally trained service experts</li>
             <li>✓ No hidden or unexpected charges</li>
             <li>✓ Full Line of Major Air Conditioning brands</li>
             <li>✓ 100% Guaranteed Financing</li>
@@ -162,7 +162,7 @@
 
           <h3 class="seo-subheading">Our Services</h3>
           <p class="seo-paragraph">
-            Our {{ categoryName }} technicians have years of practical, in-field experience. They possess just the right
+            Our {{ categoryName }} service team has years of practical, in-field experience. They possess just the right
             knowledge and skills needed to diagnose and rule out any {{ categoryName }} complication and give you a
             solution regarding all problems you may have.
           </p>
@@ -345,7 +345,7 @@
       <div class="success-modal-card">
         <div class="success-icon-circle">✓</div>
         <h2>Booking Order Confirmed!</h2>
-        <p>Your Mr Home Services request has been received. Our technician will visit you on August {{ cartStore.selectedDateNum }}, at {{ cartStore.selectedTimeSlot }}.</p>
+        <p>Your Mr Home Services request has been received. Our team will visit you on August {{ cartStore.selectedDateNum }}, at {{ cartStore.selectedTimeSlot }}.</p>
         <div class="modal-order-details">
           <p><strong>Total Amount:</strong> Rs {{ cartStore.totalCartPrice }}</p>
           <p><strong>Payment:</strong> Cash on Delivery</p>
@@ -361,6 +361,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useService } from '@/composables/useService'
 import { useCartStore, type ServiceItem } from '@/stores/cart'
+import { showPromptAlert } from '@/utils/alert'
 
 const route = useRoute()
 const router = useRouter()
@@ -458,10 +459,10 @@ const goToCheckout = () => {
   router.push('/cart')
 }
 
-const openAddAddressModal = () => {
-  const newAddr = prompt('Enter your complete delivery address:', cartStore.selectedAddress)
-  if (newAddr && newAddr.trim()) {
-    cartStore.selectedAddress = newAddr.trim()
+const openAddAddressModal = async () => {
+  const result = await showPromptAlert('Delivery Address', 'Enter your complete delivery address:', cartStore.selectedAddress)
+  if (result.isConfirmed && result.value && result.value.trim()) {
+    cartStore.selectedAddress = result.value.trim()
   }
 }
 
@@ -932,9 +933,71 @@ const finishOrder = () => {
 
 @media (max-width: 900px) {
   .services-cards-grid { grid-template-columns: repeat(2, 1fr); }
+  .checkout-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 600px) {
+  .blue-banner {
+    padding: 24px 16px 36px;
+  }
+
+  .banner-title {
+    font-size: 1.8rem;
+  }
+
+  .banner-subtitle {
+    font-size: 0.9rem;
+    margin-bottom: 16px;
+  }
+
+  .banner-stats {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .stat-pill {
+    width: 100%;
+  }
+
+  .main-body-container {
+    margin: -15px auto 40px;
+    padding: 0 12px;
+  }
+
+  .services-window-box {
+    padding: 16px 12px;
+    border-radius: 12px;
+  }
+
+  .search-box {
+    width: 100%;
+  }
+
   .services-cards-grid { grid-template-columns: 1fr; }
+
+  .service-item-card {
+    padding: 12px;
+  }
+
+  .floating-cart-bar {
+    left: 12px;
+    right: 12px;
+    bottom: 16px;
+    width: calc(100% - 24px);
+  }
+
+  .floating-bar-inner {
+    justify-content: space-between;
+    width: 100%;
+    padding: 8px 12px 8px 16px;
+  }
+
+  .seo-text-section {
+    padding: 20px 16px;
+  }
+
+  .seo-main-heading {
+    font-size: 18px;
+  }
 }
 </style>

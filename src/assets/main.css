@@ -20,3 +20,24 @@ a {
   color: inherit;
 }
 
+/* Ensure SweetAlert Toasts & Modals are ALWAYS above all modal backdrops */
+.swal2-container {
+  z-index: 99999999 !important;
+}
+
+/* Global Form Error Styles */
+.has-error {
+  border-color: #DC2626 !important;
+  background-color: #FEF2F2 !important;
+}
+
+.text-danger-error {
+  display: block;
+  color: #DC2626;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 4px;
+  margin-left: 4px;
+  text-align: left;
+}
+

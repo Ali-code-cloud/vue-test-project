@@ -20,6 +20,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import UserCard from '@/components/UserCard.vue'
+import { showInfoToast } from '@/utils/alert'
 
 // Define user type
 interface User {
@@ -59,9 +60,7 @@ const users = ref<User[]>([
 
 // Event handler
 const handleProfileClick = (user: User) => {
-    alert(`Viewing profile of ${user.name}`)
-    // In a real app, you might navigate to a profile page:
-    // router.push(`/user/${user.id}`)
+    showInfoToast(`Viewing profile of ${user.name}`)
 }
 </script>
 

@@ -27,7 +27,7 @@ const openCategoryServices = (category: any) => {
     <section class="services-page-section">
         <div class="services-header">
             <h2 class="services-title">Our Service Categories</h2>
-            <p class="services-subtitle">Select a category to view specialized services, rates, and technician details
+            <p class="services-subtitle">Select a category to view specialized services and rates
             </p>
         </div>
 
@@ -175,8 +175,33 @@ const openCategoryServices = (category: any) => {
 }
 
 @media (max-width: 600px) {
+    .services-page-section {
+        margin: 20px auto;
+        padding: 0 12px;
+    }
+
+    .services-title {
+        font-size: 1.8rem;
+    }
+
     .categories-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 12px;
+    }
+
+    .category-card {
+        padding: 16px 12px;
+        border-radius: 12px;
+    }
+
+    .category-icon-box {
+        width: 60px;
+        height: 60px;
+        border-radius: 12px;
+    }
+
+    .category-name {
+        font-size: 15px;
     }
 }
 </style>

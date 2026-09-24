@@ -11,21 +11,25 @@ export interface User {
   role?: string
   avatar?: string
   joinedDate?: string
+  is_verified?: boolean
+  is_active?: boolean
+  created_at?: string
+  updated_at?: string
 }
 
 /**
- * Helper to extract a user-friendly error message from Axios errors.
+ * Helper to extract a user-friendly error message from Axios or Fetch errors.
  * Handles Laravel's validation format: { errors: { field: ["msg"] } }
  */
 export function getApiError(error: any): string {
-  if (error.response?.data?.errors) {
+  if (error?.response?.data?.errors) {
     const errors = error.response.data.errors
     return Object.values(errors).flat().join(', ')
   }
-  if (error.response?.data?.message) {
+  if (error?.response?.data?.message) {
     return error.response.data.message
   }
-  if (error.message) {
+  if (error?.message) {
     return error.message
   }
   return 'Something went wrong. Please try again.'
@@ -36,57 +40,45 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('token') || null)
 
   const isAuthenticated = computed(() => !!user.value && !!token.value)
-
-  /**
-   * Request OTP — sends a 6-digit code to the email
-   * POST /api/user/auth/request-otp  { email }
-   */
   async function requestOtp(email: string) {
-    const { data } = await api.post('/api/user/auth/request-otp', { email })
-    return data
+    try {
+      const { data } = await api.post('/api/user/auth/request-otp', { email })
+      return data
+    } catch (err: any) {
+      try {
+        const res = await fetch('http://mrhomeservices.test:8001/api/user/auth/request-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ email })
+        })
+        const resData = await res.json()
+        if (res.ok && resData.status) return resData
+        throw new Error(resData.message || 'Failed to send OTP.')
+      } catch (fallbackErr) {
+        throw err
+      }
+    }
   }
-
-  /**
-   * Verify OTP — validates the 6-digit code
-   * POST /api/user/auth/verify-otp  { email, otp }
-   * If the backend returns a token, we auto-login.
-   */
   async function verifyOtp(email: string, otp: string) {
     try {
       const { data } = await api.post('/api/user/auth/verify-otp', { email, otp })
-      if (data?.token) {
-        setAuth(data.token, data.user)
-      }
       return data
     } catch (err: any) {
-      if (err.response?.status === 404) {
-        const { data } = await api.post('/api/user/auth/request-otp', { email, otp })
-        if (data?.token) {
-          setAuth(data.token, data.user)
-        }
-        return data
+      try {
+        const res = await fetch('http://mrhomeservices.test:8001/api/user/auth/verify-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ email, otp })
+        })
+        const resData = await res.json()
+        if (res.ok && resData.status) return resData
+        throw new Error(resData.message || 'Failed to verify OTP.')
+      } catch (fallbackErr) {
+        throw err
       }
-      throw err
     }
   }
 
-  /**
-   * Login with email + password
-   * POST /api/user/auth/login  { email, password }
-   */
-  async function login(email: string, password: string) {
-    const { data } = await api.post('/api/user/auth/login', { email, password })
-    if (data.token) {
-      setAuth(data.token, data.user)
-    }
-    return data
-  }
-
-  /**
-   * Register a new user
-   * POST /api/user/auth/register
-   * { email, name, address, phone, password, password_confirmation }
-   */
   async function register(payload: {
     email: string
     name: string
@@ -95,16 +87,81 @@ export const useAuthStore = defineStore('auth', () => {
     password: string
     password_confirmation: string
   }) {
-    const { data } = await api.post('/api/user/auth/register', payload)
-    if (data.token) {
-      setAuth(data.token, data.user)
+    let resData: any = null
+    try {
+      const { data } = await api.post('/api/user/auth/register', payload)
+      resData = data
+    } catch (err: any) {
+      try {
+        const res = await fetch('http://mrhomeservices.test:8001/api/user/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        resData = await res.json()
+        if (!res.ok || !resData.status) {
+          throw err
+        }
+      } catch (fallbackErr) {
+        throw err
+      }
     }
-    return data
+
+    const userData = resData?.data?.user || resData?.user
+    const accessToken = resData?.data?.access_token || resData?.access_token || resData?.token
+
+    if (accessToken && userData) {
+      setAuth(accessToken, userData)
+    }
+
+    return resData
+  }
+
+  /**
+   * 4. Login with email & password
+   * POST http://mrhomeservices.test:8001/api/user/auth/login { email, password }
+   */
+  async function login(email: string, password: string) {
+    let resData: any = null
+    try {
+      const { data } = await api.post('/api/user/auth/login', { email, password })
+      resData = data
+    } catch (err: any) {
+      try {
+        const res = await fetch('http://mrhomeservices.test:8001/api/user/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ email, password })
+        })
+        resData = await res.json()
+        if (!res.ok || !resData.status) {
+          throw err
+        }
+      } catch (fallbackErr) {
+        throw err
+      }
+    }
+
+    const userData = resData?.data?.user || resData?.user
+    const accessToken = resData?.data?.access_token || resData?.access_token || resData?.token
+
+    if (accessToken && userData) {
+      setAuth(accessToken, userData)
+    }
+
+    return resData
+  }
+
+  function updateProfile(updatedData: Partial<User>) {
+    if (user.value) {
+      user.value = { ...user.value, ...updatedData }
+      localStorage.setItem('user', JSON.stringify(user.value))
+    }
   }
 
   /**
    * Forgot Password — sends OTP to email for password reset
-   * POST /api/user/auth/forgot-password  { email }
+   * POST /api/user/auth/forgot-password { email }
    */
   async function forgotPassword(email: string) {
     const { data } = await api.post('/api/user/auth/forgot-password', { email })
@@ -113,7 +170,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   /**
    * Reset Password — uses OTP + new password to reset
-   * POST /api/user/auth/reset-password  { email, otp, password, password_confirmation }
+   * POST /api/user/auth/reset-password { email, otp, password, password_confirmation }
    */
   async function resetPassword(payload: {
     email: string
@@ -132,8 +189,9 @@ export const useAuthStore = defineStore('auth', () => {
   async function fetchUser() {
     try {
       const { data } = await api.get('/api/user')
-      user.value = data.user || data
-      localStorage.setItem('user', JSON.stringify(user.value))
+      const fetchedUser = data.data?.user || data.user || data
+      user.value = fetchedUser
+      localStorage.setItem('user', JSON.stringify(fetchedUser))
       return user.value
     } catch (e) {
       logout()
@@ -169,6 +227,7 @@ export const useAuthStore = defineStore('auth', () => {
     resetPassword,
     fetchUser,
     setAuth,
+    updateProfile,
     logout
   }
 })

@@ -4,7 +4,7 @@
       <span class="badge">Who We Are</span>
       <h1>Your Trusted Home Maintenance Partner</h1>
       <p class="subtitle">
-        Connecting millions of households with background-verified, expert technicians across Pakistan.
+        Connecting households with background-verified, expert service professionals across Pakistan.
       </p>
     </div>
 
@@ -31,7 +31,7 @@
       <div class="info-card">
         <div class="card-icon">🎯</div>
         <h3>Our Mission</h3>
-        <p>To revolutionize home services in Pakistan by providing transparent pricing, instant technician booking, and 100% service guarantee.</p>
+        <p>To revolutionize home services in Pakistan by providing transparent pricing, instant booking, and 100% service guarantee.</p>
       </div>
       <div class="info-card">
         <div class="card-icon">👁️</div>
@@ -41,7 +41,7 @@
       <div class="info-card">
         <div class="card-icon">🛡️</div>
         <h3>Quality Assurance</h3>
-        <p>Every technician undergoes strict background verification, technical aptitude testing, and customer etiquette training before onboard.</p>
+        <p>Every team member undergoes strict background verification, technical aptitude testing, and customer etiquette training before onboard.</p>
       </div>
     </div>
   </div>

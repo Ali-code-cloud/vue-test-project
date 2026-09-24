@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import washingMachineImg from '@/assets/washing_machine.png'
 import muslimShowerImg from '@/assets/muslim_shower.png'
 import acRepairImg from '@/assets/service-images/ac.png'
+
+import api from '@/composables/useApi'
 
 interface TrendingService {
     id: number
@@ -12,7 +14,7 @@ interface TrendingService {
     image: string
 }
 
-const trendingServices: TrendingService[] = [
+const trendingServices = ref<TrendingService[]>([
     {
         id: 1,
         title: 'Automatic Washing Machine Repairing',
@@ -34,45 +36,100 @@ const trendingServices: TrendingService[] = [
         price: 'Rs:1500',
         image: acRepairImg
     }
-]
+])
 
 const currentIndex = ref(0)
 const isPaused = ref(false)
 let timer: number | null = null
 
-const totalDots = trendingServices.length - 1
+const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1200)
+
+const updateWidth = () => {
+    windowWidth.value = window.innerWidth
+}
+
+const itemsPerView = computed(() => {
+    return windowWidth.value <= 900 ? 1 : 2
+})
+
+const totalDots = computed(() => Math.max(1, trendingServices.value.length - itemsPerView.value + 1))
+
+const trackTransform = computed(() => {
+    const shiftPercent = currentIndex.value * (100 / itemsPerView.value)
+    return `translateX(-${shiftPercent}%)`
+})
 
 const nextSlide = () => {
-    if (isPaused.value) return
-    currentIndex.value = (currentIndex.value + 1) % totalDots
+    if (isPaused.value || totalDots.value <= 1) return
+    currentIndex.value = (currentIndex.value + 1) % totalDots.value
 }
 
 const setSlide = (index: number) => {
     currentIndex.value = index
 }
 
+const formatImageUrl = (imagePath?: string | null) => {
+    if (!imagePath) return washingMachineImg
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) return imagePath
+    return `http://mrhomeservices.test:8001/storage/${imagePath.replace(/^\//, '')}`
+}
+
+const fetchTrendingServices = async () => {
+    try {
+        const { data } = await api.get('/api/trending-services')
+        if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
+            trendingServices.value = data.data.map((item: any) => ({
+                id: item.id,
+                title: item.name || 'Home Service',
+                rating: item.rating && Number(item.rating) > 0 ? String(item.rating) : '4.8',
+                price: item.discounted_price ? `Rs:${Math.round(Number(item.discounted_price))}` : (item.original_price ? `Rs:${Math.round(Number(item.original_price))}` : 'Rs:1200'),
+                image: formatImageUrl(item.image)
+            }))
+            return
+        }
+    } catch (e) {
+        // Fallback to direct fetch
+    }
+
+    try {
+        const res = await fetch('http://mrhomeservices.test:8001/api/trending-services')
+        const resData = await res.json()
+        if (resData?.data && Array.isArray(resData.data) && resData.data.length > 0) {
+            trendingServices.value = resData.data.map((item: any) => ({
+                id: item.id,
+                title: item.name || 'Home Service',
+                rating: item.rating && Number(item.rating) > 0 ? String(item.rating) : '4.8',
+                price: item.discounted_price ? `Rs:${Math.round(Number(item.discounted_price))}` : (item.original_price ? `Rs:${Math.round(Number(item.original_price))}` : 'Rs:1200'),
+                image: formatImageUrl(item.image)
+            }))
+            return
+        }
+    } catch (err) {
+        // Keep initial fallback values
+    }
+}
+
 onMounted(() => {
+    window.addEventListener('resize', updateWidth)
+    fetchTrendingServices()
     timer = window.setInterval(nextSlide, 3500)
 })
 
 onUnmounted(() => {
+    window.removeEventListener('resize', updateWidth)
     if (timer) clearInterval(timer)
 })
 </script>
 
 <template>
-    <section 
-        class="trending-section auto-switch-slider"
-        @mouseenter="isPaused = true" 
-        @mouseleave="isPaused = false"
-    >
+    <section class="trending-section auto-switch-slider" @mouseenter="isPaused = true" @mouseleave="isPaused = false">
         <div class="trending-container">
             <!-- Left Info Block -->
             <div class="trending-info">
                 <span class="trending-badge">Trending Services</span>
                 <h2 class="trending-heading">Hot-sellers are up for grabs!</h2>
                 <p class="trending-description">
-                    The most popular, highly recommended & pocket friendly deals of the month. 
+                    The most popular, highly recommended & pocket friendly deals of the month.
                     Our customers love these MUST-COMPLY services. Try now!
                 </p>
             </div>
@@ -80,23 +137,18 @@ onUnmounted(() => {
             <!-- Right Slider Block -->
             <div class="trending-slider-wrapper">
                 <div class="trending-cards-window">
-                    <div 
-                        class="trending-cards-track" 
-                        :style="{ transform: `translateX(-${currentIndex * 52}%)` }"
-                    >
-                        <div 
-                            v-for="service in trendingServices" 
-                            :key="service.id" 
-                            class="trending-card"
-                        >
-                            <div class="card-image-box">
-                                <img :src="service.image" :alt="service.title" class="service-product-img" />
-                            </div>
-                            <div class="card-blue-content">
-                                <h3 class="card-title">{{ service.title }}</h3>
-                                <div class="card-meta">
-                                    <span class="rating-badge">★ {{ service.rating }}</span>
-                                    <span class="price-tag">{{ service.price }}</span>
+                    <div class="trending-cards-track" :style="{ transform: trackTransform }">
+                        <div v-for="service in trendingServices" :key="service.id" class="trending-card-item">
+                            <div class="trending-card">
+                                <div class="card-image-box">
+                                    <img :src="service.image" :alt="service.title" class="service-product-img" />
+                                </div>
+                                <div class="card-blue-content">
+                                    <h3 class="card-title">{{ service.title }}</h3>
+                                    <div class="card-meta">
+                                        <span class="rating-badge">★ {{ service.rating }}</span>
+                                        <span class="price-tag">{{ service.price }}</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -104,15 +156,10 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Pagination Dots -->
-                <div class="slider-dots">
-                    <button 
-                        v-for="(_, index) in totalDots" 
-                        :key="index"
-                        class="dot-btn"
-                        :class="{ active: currentIndex === index }"
-                        @click="setSlide(index)"
-                        :aria-label="`Slide ${index + 1}`"
-                    ></button>
+                <div v-if="totalDots > 1" class="slider-dots">
+                    <button v-for="(_, index) in totalDots" :key="index" class="dot-btn"
+                        :class="{ active: currentIndex === index }" @click="setSlide(index)"
+                        :aria-label="`Slide ${index + 1}`"></button>
                 </div>
             </div>
         </div>
@@ -166,6 +213,7 @@ onUnmounted(() => {
     flex: 1.4;
     overflow: hidden;
     position: relative;
+    width: 100%;
 }
 
 .trending-cards-window {
@@ -175,19 +223,24 @@ onUnmounted(() => {
 
 .trending-cards-track {
     display: flex;
-    gap: 20px;
     transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1);
 }
 
+.trending-card-item {
+    flex: 0 0 50%;
+    min-width: 50%;
+    box-sizing: border-box;
+    padding: 0 10px;
+}
+
 .trending-card {
-    min-width: 250px;
-    flex: 0 0 48%;
     border-radius: 12px;
     overflow: hidden;
     background: white;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
     display: flex;
     flex-direction: column;
+    height: 100%;
 }
 
 .card-image-box {
@@ -265,17 +318,29 @@ onUnmounted(() => {
 }
 
 @media (max-width: 900px) {
+    .trending-section {
+        padding: 32px 20px;
+        margin: 24px 0;
+    }
+
     .trending-container {
         flex-direction: column;
         text-align: center;
+        gap: 24px;
     }
-    
+
     .trending-info {
         max-width: 100%;
     }
 
-    .trending-card {
-        flex: 0 0 80%;
+    .trending-heading {
+        font-size: 1.75rem;
+    }
+
+    .trending-card-item {
+        flex: 0 0 100%;
+        min-width: 100%;
+        padding: 0 4px;
     }
 }
 </style>

@@ -120,8 +120,13 @@ export function useService() {
     const deleteRating = (serviceId, ratingId) =>
         api.delete(`/api/services/${serviceId}/ratings/${ratingId}`).then(unwrap);
 
+    // ── Global Search ────────────────────────────────────────────────────────
+    const searchServices = (query) =>
+        api.post("/api/search", { query }).then(unwrap);
+
     return {
         csrf,
+        searchServices,
         // Categories
         getCategories,
         getCategoryServices,
