@@ -117,14 +117,18 @@
                 </template>
             </div>
 
-            <!-- Mobile Right Controls (Menu Toggle) -->
+            <!-- Mobile Center Title -->
+            <div v-if="route.path === '/'" class="mobile-center-title">
+                Home
+            </div>
+
+            <!-- Mobile Right Controls -->
             <div class="mobile-right-actions">
-                <button class="menu-toggle" @click="toggleMenu" aria-label="Toggle menu">
-                    <span class="hamburger" :class="{ active: isMenuOpen }">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </span>
+                <button @click="openCallModal" class="mobile-call-icon-btn" title="Call Us" aria-label="Call Us" type="button">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="#0D52CD">
+                        <path
+                            d="M6.62 10.79a15.053 15.053 0 006.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" />
+                    </svg>
                 </button>
             </div>
         </div>
@@ -161,7 +165,7 @@
                             <div v-if="categories.length > 0" class="mobile-subcategories">
                                 <router-link v-for="category in categories" :key="category.id"
                                     :to="`/services/category/${category.id}`" @click="closeMenu" class="mobile-subcat-link">
-                                    ↳ {{ category.name }}
+                                    {{ category.name }}
                                 </router-link>
                             </div>
                         </li>
@@ -232,15 +236,17 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import logo from '@/assets/new-logo.png'
 import { useAuthStore, getApiError } from '@/stores/auth'
 import { useCartStore } from '@/stores/cart'
 import api from '@/composables/useApi'
+import { useFetch } from '@/composables/useFetch'
 
 const authStore = useAuthStore()
 const cartStore = useCartStore()
 const router = useRouter()
+const route = useRoute()
 
 const cities = ref<string[]>(['Lahore', 'Karachi', 'Islamabad', 'Rawalpindi', 'Multan'])
 const selectedCity = ref('Lahore')
@@ -349,11 +355,15 @@ const selectCity = (city: string) => {
     isLocationOpen.value = false
 }
 
+const { execute: fetchCitiesApi } = useFetch('/api/active-cities', { immediate: false })
+const { execute: fetchCategoriesApi } = useFetch('/api/service-categories', { immediate: false })
+
 const fetchActiveCities = async () => {
     try {
-        const { data } = await api.get('/api/active-cities')
-        if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-            const mapped = data.data.map((c: any) => c.name).filter((name: any): name is string => typeof name === 'string' && name.length > 0)
+        const resData = await fetchCitiesApi()
+        const rawCities = resData?.data || (Array.isArray(resData) ? resData : [])
+        if (Array.isArray(rawCities) && rawCities.length > 0) {
+            const mapped = rawCities.map((c: any) => typeof c === 'string' ? c : c.name).filter((name: any): name is string => typeof name === 'string' && name.length > 0)
             if (mapped.length > 0) {
                 cities.value = mapped
                 const firstCity = mapped[0]
@@ -363,22 +373,7 @@ const fetchActiveCities = async () => {
             }
         }
     } catch (e) {
-        try {
-            const res = await fetch('http://mrhomeservices.test:8001/api/active-cities')
-            const resData = await res.json()
-            if (resData?.data && Array.isArray(resData.data) && resData.data.length > 0) {
-                const mapped = resData.data.map((c: any) => c.name).filter((name: any): name is string => typeof name === 'string' && name.length > 0)
-                if (mapped.length > 0) {
-                    cities.value = mapped
-                    const firstCity = mapped[0]
-                    if (firstCity && !cities.value.includes(selectedCity.value)) {
-                        selectedCity.value = firstCity
-                    }
-                }
-            }
-        } catch (err) {
-            // Keep default fallback cities
-        }
+        // Keep default fallback cities
     }
 }
 
@@ -386,32 +381,13 @@ const categories = ref<any[]>([])
 
 const fetchCategories = async () => {
     try {
-        const { data } = await api.get('/api/service-categories')
-        if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-            categories.value = data.data
-            return
-        }
-        if (Array.isArray(data) && data.length > 0) {
-            categories.value = data
-            return
-        }
-    } catch (e) {
-        // Fallback
-    }
-
-    try {
-        const res = await fetch('http://mrhomeservices.test:8001/api/service-categories')
-        const resData = await res.json()
-        if (resData?.data && Array.isArray(resData.data) && resData.data.length > 0) {
-            categories.value = resData.data
-            return
-        }
-        if (Array.isArray(resData) && resData.length > 0) {
-            categories.value = resData
-            return
+        const resData = await fetchCategoriesApi()
+        const rawCats = resData?.data || (Array.isArray(resData) ? resData : [])
+        if (Array.isArray(rawCats) && rawCats.length > 0) {
+            categories.value = rawCats
         }
     } catch (err) {
-        // Keep empty
+        // Keep empty fallback
     }
 }
 
@@ -617,6 +593,30 @@ const handleLogoutMobile = () => {
     gap: 16px;
 }
 
+.header-call-btn,
+.mobile-call-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: #1A56DB;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 3px 10px rgba(26, 86, 219, 0.25);
+    flex-shrink: 0;
+}
+
+.header-call-btn:hover,
+.mobile-call-btn:hover {
+    background: #1D4ED8;
+    transform: scale(1.06);
+    box-shadow: 0 5px 14px rgba(26, 86, 219, 0.35);
+}
+
 /* Location Custom Dropdown Selector */
 .location-selector-wrap {
     position: relative;
@@ -820,18 +820,53 @@ const handleLogoutMobile = () => {
     border-radius: 2px;
 }
 
+.mobile-center-title {
+    display: none;
+}
+
+.mobile-right-actions {
+    display: none;
+}
+
 @media (max-width: 880px) {
     .nav-desktop,
     .header-actions {
-        display: none;
+        display: none !important;
+    }
+
+    .mobile-center-title {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 19px;
+        font-weight: 800;
+        color: #0F172A;
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        letter-spacing: -0.2px;
     }
 
     .mobile-right-actions {
-        display: flex;
+        display: flex !important;
+        align-items: center;
+        margin-left: auto;
     }
 
-    .menu-toggle {
-        display: block;
+    .mobile-call-icon-btn {
+        background: transparent;
+        border: none;
+        padding: 4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        outline: none;
+        transition: transform 0.15s ease;
+    }
+
+    .mobile-call-icon-btn:active {
+        transform: scale(0.88);
     }
 }
 
@@ -885,6 +920,20 @@ const handleLogoutMobile = () => {
     font-size: 16px;
     font-weight: 500;
     text-decoration: none;
+}
+
+.mobile-subcategories {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+    padding-left: 16px;
+}
+
+.mobile-subcat-link {
+    font-size: 14px !important;
+    color: #64748B !important;
+    font-weight: 400 !important;
 }
 
 .mobile-dash-link {

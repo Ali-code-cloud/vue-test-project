@@ -668,19 +668,33 @@ const handleRegister = async () => {
 }
 
 .back-home-wrap {
-    text-align: center;
+    display: flex;
+    justify-content: center;
     margin-top: 24px;
 }
 
 .back-home-link {
-    font-size: 13.5px;
-    color: #64748B;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #EFF6FF;
+    color: #1D4ED8;
+    border: 1.5px solid #BFDBFE;
+    border-radius: 30px;
+    padding: 9px 24px;
+    font-size: 14px;
+    font-weight: 700;
     text-decoration: none;
-    font-weight: 500;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(29, 78, 216, 0.1);
 }
 
 .back-home-link:hover {
-    color: #0F172A;
+    background: #1D4ED8;
+    color: #ffffff;
+    border-color: #1D4ED8;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(29, 78, 216, 0.25);
 }
 
 .auth-alert {

@@ -41,14 +41,37 @@
 
       <!-- Main Content Body -->
       <div class="main-body-container">
-        <!-- Category Services Grey Window Box -->
+        <!-- 1. Category Tabs Container Box (matching screenshot) -->
+        <div v-if="allCategories.length > 0" class="category-tabs-container-box">
+          <div class="category-tabs-scroll-track">
+            <button 
+              v-for="cat in allCategories" 
+              :key="cat.id" 
+              class="category-text-tab"
+              :class="{ active: Number(cat.id) === Number(selectedCategoryId) }"
+              @click="selectCategory(cat.id)"
+            >
+              <span class="tab-label">{{ cat.name }}</span>
+              <span v-if="Number(cat.id) === Number(selectedCategoryId)" class="active-blue-bar"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Search Container Box (matching screenshot) -->
+        <div class="services-search-container-box">
+          <div class="search-pill-wrapper">
+            <svg class="search-icon-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" v-model="searchQuery" placeholder="Search" class="search-input-pill" />
+          </div>
+        </div>
+
+        <!-- 3. Category Services Grey Window Box -->
         <div class="services-window-box">
           <div class="window-header">
             <h2 class="window-title">{{ categoryName }} Services</h2>
-            <div class="search-box">
-              <img src="@/assets/search.svg" alt="Search" class="search-icon">
-              <input type="text" v-model="searchQuery" placeholder="Search" class="search-input" />
-            </div>
           </div>
 
           <!-- Loading State -->
@@ -382,13 +405,55 @@ function getImageUrl(imagePath?: string | null): string {
   return `http://127.0.0.1:8001/storage/${imagePath.replace(/^\//, '')}`
 }
 
-const categoryId = computed(() => Number(route.params.id || 4))
-const categoryName = ref('AC')
-const categoryDescription = ref('We Service, Repair, and Install All AC Brands!')
+const selectedCategoryId = ref<number>(4)
+const categoryName = ref('Services')
+const categoryDescription = ref('Browse our top categories and services')
 
+const allCategories = ref<ServiceCategory[]>([])
 const services = ref<ServiceItem[]>([])
 const searchQuery = ref('')
 const isLoading = ref(true)
+
+const loadCategoryData = async (id?: number) => {
+  isLoading.value = true
+  try {
+    const fetchedCategories: ServiceCategory[] = await service.getCategories()
+    if (Array.isArray(fetchedCategories) && fetchedCategories.length > 0) {
+      allCategories.value = fetchedCategories
+    }
+
+    let activeId = id || Number(route.params.id)
+    if (!activeId && allCategories.value.length > 0) {
+      const firstCat = allCategories.value[0]
+      if (firstCat) {
+        activeId = Number(firstCat.id)
+      }
+    }
+    if (!activeId) activeId = 4
+
+    selectedCategoryId.value = activeId
+
+    const found = allCategories.value.find((c: ServiceCategory) => Number(c.id) === Number(activeId))
+    if (found) {
+      categoryName.value = found.name
+      categoryDescription.value = found.description || `We Service, Repair, and Install All ${found.name} Brands!`
+    }
+
+    const fetchedServices: ServiceItem[] = await service.getCategoryServices(activeId)
+    services.value = Array.isArray(fetchedServices) ? fetchedServices : []
+  } catch (error) {
+    console.error('Error loading category services:', error)
+    services.value = []
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const selectCategory = (catId: number | string) => {
+  const numId = Number(catId)
+  selectedCategoryId.value = numId
+  router.push(`/services/category/${numId}`)
+}
 
 const currentViewMode = ref<'services_list' | 'checkout'>('services_list')
 const fileInput = ref<any>(null)
@@ -425,34 +490,12 @@ const filteredServices = computed(() => {
   )
 })
 
-const loadCategoryData = async (id: number) => {
-  isLoading.value = true
-  try {
-    const categories: ServiceCategory[] = await service.getCategories()
-    const found = categories.find((c: ServiceCategory) => c.id === id)
-    if (found) {
-      categoryName.value = found.name
-      categoryDescription.value = found.description || `We Service, Repair, and Install All ${found.name} Brands!`
-    }
-
-    const fetchedServices: ServiceItem[] = await service.getCategoryServices(id)
-    services.value = Array.isArray(fetchedServices) ? fetchedServices : []
-  } catch (error) {
-    console.error('Error loading category services:', error)
-    services.value = []
-  } finally {
-    isLoading.value = false
-  }
-}
-
 onMounted(() => {
-  loadCategoryData(categoryId.value)
+  loadCategoryData(route.params.id ? Number(route.params.id) : undefined)
 })
 
 watch(() => route.params.id, (newId) => {
-  if (newId) {
-    loadCategoryData(Number(newId))
-  }
+  loadCategoryData(newId ? Number(newId) : undefined)
 })
 
 const goToCheckout = () => {
@@ -577,6 +620,116 @@ const finishOrder = () => {
   margin-bottom: 50px;
 }
 
+/* 1. Category Tabs Container Box (Matching Screenshot) */
+.category-tabs-container-box {
+  background: #F4F6F8;
+  border-radius: 16px;
+  padding: 14px 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+}
+
+.category-tabs-scroll-track {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.category-tabs-scroll-track::-webkit-scrollbar {
+  display: none;
+}
+
+.category-text-tab {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  font-weight: 500;
+  color: #475569;
+  padding: 8px 4px 10px;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.category-text-tab:hover {
+  color: #1A56DB;
+}
+
+.category-text-tab.active {
+  color: #1A56DB;
+  font-weight: 700;
+}
+
+.tab-label {
+  font-size: 16px;
+}
+
+.active-blue-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background-color: #1A56DB;
+  border-radius: 2px;
+}
+
+/* 2. Search Container Box (Matching Screenshot) */
+.services-search-container-box {
+  background: #F4F6F8;
+  border-radius: 16px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+}
+
+.search-pill-wrapper {
+  display: flex;
+  align-items: center;
+  background: #FFFFFF;
+  border: 1.5px solid #CBD5E1;
+  border-radius: 40px;
+  padding: 10px 20px;
+  max-width: 380px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.search-pill-wrapper:focus-within {
+  border-color: #1A56DB;
+  box-shadow: 0 4px 12px rgba(26, 86, 219, 0.12);
+}
+
+.search-icon-svg {
+  color: #94A3B8;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.search-input-pill {
+  border: none;
+  outline: none;
+  background: transparent;
+  width: 100%;
+  font-size: 15px;
+  color: #1E293B;
+}
+
+.search-input-pill::placeholder {
+  color: #94A3B8;
+  font-size: 15px;
+}
+
 .window-header {
   display: flex;
   justify-content: space-between;
@@ -622,6 +775,31 @@ const finishOrder = () => {
 .service-item-card.in-cart-active {
   border-color: #1A56DB !important;
   box-shadow: 0 4px 16px rgba(26, 86, 219, 0.15);
+}
+
+.btn-back-to-services {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #EFF6FF;
+  color: #1D4ED8;
+  border: 1.5px solid #BFDBFE;
+  border-radius: 30px;
+  padding: 9px 22px;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 14px;
+  margin-bottom: 20px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(29, 78, 216, 0.08);
+}
+
+.btn-back-to-services:hover {
+  background: #1D4ED8;
+  color: #ffffff;
+  border-color: #1D4ED8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(29, 78, 216, 0.25);
 }
 
 .card-thumb {

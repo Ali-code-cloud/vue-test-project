@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import api from '@/composables/useApi'
+import { useFetch } from '@/composables/useFetch'
+
+const { execute: fetchAllReviewsApi } = useFetch('/api/all-reviews', { immediate: false })
+const { execute: fetchLatestReviewsApi } = useFetch('/api/reviews/latest', { immediate: false })
 
 interface Review {
     id: number
@@ -79,49 +82,21 @@ const formatDate = (rawDateStr: string) => {
 const formatAvatarUrl = (avatarPath?: string | null) => {
     if (!avatarPath) return null
     if (avatarPath.startsWith('http://') || avatarPath.startsWith('https://')) return avatarPath
-    return `http://mrhomeservices.test:8001/${avatarPath.replace(/^\//, '')}`
+    return `http://127.0.0.1:8001/${avatarPath.replace(/^\//, '')}`
 }
 
 const fetchReviews = async () => {
     try {
-        const { data } = await api.get('/api/all-reviews')
-        if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-            reviews.value = data.data.map((item: any) => ({
-                id: item.id,
-                name: item.customer_name || 'Customer',
-                comment: item.comment || '',
-                date: formatDate(item.review_date || item.created_at),
-                rating: item.rating || 5,
-                avatar: formatAvatarUrl(item.customer_avatar)
-            }))
-            return
-        }
-    } catch (e) {
-        // Fallback to direct fetch or latest endpoint
-    }
+        let resData = await fetchAllReviewsApi()
+        let items = resData?.data || (Array.isArray(resData) ? resData : [])
 
-    try {
-        const res = await fetch('http://mrhomeservices.test:8001/api/reviews/latest')
-        const resData = await res.json()
-        if (resData?.data && Array.isArray(resData.data) && resData.data.length > 0) {
-            reviews.value = resData.data.map((item: any) => ({
-                id: item.id,
-                name: item.customer_name || 'Customer',
-                comment: item.comment || '',
-                date: formatDate(item.review_date || item.created_at),
-                rating: item.rating || 5,
-                avatar: formatAvatarUrl(item.customer_avatar)
-            }))
-            return
+        if (!Array.isArray(items) || items.length === 0) {
+            resData = await fetchLatestReviewsApi()
+            items = resData?.data || (Array.isArray(resData) ? resData : [])
         }
-    } catch (err) {
-        // Fallback to latest reviews endpoint
-    }
 
-    try {
-        const { data } = await api.get('/api/reviews/latest')
-        if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-            reviews.value = data.data.map((item: any) => ({
+        if (Array.isArray(items) && items.length > 0) {
+            reviews.value = items.map((item: any) => ({
                 id: item.id,
                 name: item.customer_name || 'Customer',
                 comment: item.comment || '',

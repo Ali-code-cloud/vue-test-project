@@ -4,7 +4,7 @@ import washingMachineImg from '@/assets/washing_machine.png'
 import muslimShowerImg from '@/assets/muslim_shower.png'
 import acRepairImg from '@/assets/service-images/ac.png'
 
-import api from '@/composables/useApi'
+import { useFetch } from '@/composables/useFetch'
 
 interface TrendingService {
     id: number
@@ -68,41 +68,26 @@ const setSlide = (index: number) => {
     currentIndex.value = index
 }
 
+const { execute: fetchTrendingApi } = useFetch('/api/trending-services', { immediate: false })
+
 const formatImageUrl = (imagePath?: string | null) => {
     if (!imagePath) return washingMachineImg
     if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) return imagePath
-    return `http://mrhomeservices.test:8001/storage/${imagePath.replace(/^\//, '')}`
+    return `http://127.0.0.1:8001/storage/${imagePath.replace(/^\//, '')}`
 }
 
 const fetchTrendingServices = async () => {
     try {
-        const { data } = await api.get('/api/trending-services')
-        if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-            trendingServices.value = data.data.map((item: any) => ({
+        const res = await fetchTrendingApi()
+        const items = res?.data || (Array.isArray(res) ? res : [])
+        if (Array.isArray(items) && items.length > 0) {
+            trendingServices.value = items.map((item: any) => ({
                 id: item.id,
                 title: item.name || 'Home Service',
                 rating: item.rating && Number(item.rating) > 0 ? String(item.rating) : '4.8',
                 price: item.discounted_price ? `Rs:${Math.round(Number(item.discounted_price))}` : (item.original_price ? `Rs:${Math.round(Number(item.original_price))}` : 'Rs:1200'),
                 image: formatImageUrl(item.image)
             }))
-            return
-        }
-    } catch (e) {
-        // Fallback to direct fetch
-    }
-
-    try {
-        const res = await fetch('http://mrhomeservices.test:8001/api/trending-services')
-        const resData = await res.json()
-        if (resData?.data && Array.isArray(resData.data) && resData.data.length > 0) {
-            trendingServices.value = resData.data.map((item: any) => ({
-                id: item.id,
-                title: item.name || 'Home Service',
-                rating: item.rating && Number(item.rating) > 0 ? String(item.rating) : '4.8',
-                price: item.discounted_price ? `Rs:${Math.round(Number(item.discounted_price))}` : (item.original_price ? `Rs:${Math.round(Number(item.original_price))}` : 'Rs:1200'),
-                image: formatImageUrl(item.image)
-            }))
-            return
         }
     } catch (err) {
         // Keep initial fallback values

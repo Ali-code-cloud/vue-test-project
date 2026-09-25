@@ -243,25 +243,20 @@ const MOCK_SERVICES: Record<number, ServiceItem[]> = {
   ]
 }
 
+import { fetchApi } from '@/composables/useFetch'
+
 // Fetch all service categories
 export async function fetchServiceCategories(): Promise<ServiceCategory[]> {
   try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 3000)
-
-    const res = await fetch(`${API_BASE_URL}/service-categories`, {
-      signal: controller.signal
-    })
-    clearTimeout(timeoutId)
-
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`)
-    const data = await res.json()
-    if (data && data.status && Array.isArray(data.data) && data.data.length > 0) {
+    const data: any = await fetchApi('/api/service-categories')
+    if (data && Array.isArray(data.data) && data.data.length > 0) {
       return data.data
+    }
+    if (Array.isArray(data) && data.length > 0) {
+      return data
     }
     return MOCK_CATEGORIES
   } catch (error) {
-    console.warn('API fetchServiceCategories failed, using fallback mock data:', error)
     return MOCK_CATEGORIES
   }
 }
@@ -269,23 +264,16 @@ export async function fetchServiceCategories(): Promise<ServiceCategory[]> {
 // Fetch services by category ID
 export async function fetchServicesByCategoryId(categoryId: number | string): Promise<ServiceItem[]> {
   try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 3000)
-
-    const res = await fetch(`${API_BASE_URL}/services/${categoryId}`, {
-      signal: controller.signal
-    })
-    clearTimeout(timeoutId)
-
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`)
-    const data = await res.json()
-    if (data && data.status && Array.isArray(data.data) && data.data.length > 0) {
+    const data: any = await fetchApi(`/api/services/${categoryId}`)
+    if (data && Array.isArray(data.data) && data.data.length > 0) {
       return data.data
+    }
+    if (Array.isArray(data) && data.length > 0) {
+      return data
     }
     const numId = Number(categoryId)
     return MOCK_SERVICES[numId] || MOCK_SERVICES[4] || []
   } catch (error) {
-    console.warn(`API fetchServicesByCategoryId (${categoryId}) failed, using fallback mock data:`, error)
     const numId = Number(categoryId)
     return MOCK_SERVICES[numId] || MOCK_SERVICES[4] || []
   }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import api from '@/composables/useApi'
+import { useFetch } from '@/composables/useFetch'
 
 interface Category {
     id: number | string
@@ -13,7 +13,6 @@ interface Category {
 
 const router = useRouter()
 const popularCategories = ref<Category[]>([])
-const isLoading = ref(true)
 
 const defaultPopularTags = [
     { id: 1, name: 'AC Cleaning & Repairing', is_popular: 1 },
@@ -24,32 +23,23 @@ const defaultPopularTags = [
     { id: 6, name: 'Pest Control & Fumigation Services', is_popular: 1 }
 ]
 
+const { isLoading, execute } = useFetch('/api/service-categories', {
+    immediate: false,
+    fallbackData: defaultPopularTags
+})
+
 const fetchPopularCategories = async () => {
     try {
-        const { data } = await api.get('/api/service-categories')
-        const rawCats = data?.data || data || []
+        const res = await execute()
+        const rawCats = res?.data || res || []
         if (Array.isArray(rawCats) && rawCats.length > 0) {
             const popularOnly = rawCats.filter((c: any) => c.is_popular == 1 || c.popular == 1 || c.is_popular === true)
             popularCategories.value = popularOnly.length > 0 ? popularOnly : rawCats
-            return
-        }
-    } catch (e) {
-        // Fallback
-    }
-
-    try {
-        const res = await fetch('http://mrhomeservices.test:8001/api/service-categories')
-        const resData = await res.json()
-        const rawCats = resData?.data || resData || []
-        if (Array.isArray(rawCats) && rawCats.length > 0) {
-            const popularOnly = rawCats.filter((c: any) => c.is_popular == 1 || c.popular == 1 || c.is_popular === true)
-            popularCategories.value = popularOnly.length > 0 ? popularOnly : rawCats
-            return
+        } else {
+            popularCategories.value = defaultPopularTags
         }
     } catch (err) {
         popularCategories.value = defaultPopularTags
-    } finally {
-        isLoading.value = false
     }
 }
 
@@ -80,7 +70,10 @@ const navigateToCategory = (cat: Category) => {
                     class="service-tag"
                     @click="navigateToCategory(cat)"
                 >
-                    <span class="fire-icon">🔥</span> {{ cat.name }}
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="#EA580C" class="fire-svg">
+                        <path d="M12 23c-4.97 0-9-3.58-9-8 0-3.08 1.77-5.91 4.5-7.5.5-.29 1.1.08 1.1.65 0 1.25.56 2.45 1.5 3.25.32.27.8.1 0.88-.32C9.5 8.35 11 5.2 13 3.5c.37-.31.93-.05.93.43 0 1.93 1.05 3.69 2.7 4.57 2.65 1.41 4.37 4.15 4.37 7.18 0 4.42-4.03 8.02-9 8.02z"/>
+                    </svg>
+                    <span>{{ cat.name }}</span>
                 </button>
             </div>
         </div>

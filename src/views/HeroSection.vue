@@ -814,99 +814,87 @@ const handleCallSubmit = async () => {
     opacity: 0;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 768px) {
+    .hero-wrapper {
+        margin: 10px auto 20px;
+        padding: 0 12px;
+    }
 
     .hero-card {
-        flex-direction: column;
+        flex-direction: column-reverse;
+        background: transparent;
+        box-shadow: none;
+        min-height: auto;
+    }
 
+    .hero-visual {
+        width: 100%;
+        margin-bottom: 20px;
+    }
+
+    .clipped-image-container {
+        clip-path: none !important;
+        -webkit-clip-path: none !important;
+        border-radius: 20px;
+        min-height: 260px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    }
+
+    .clipped-image-container :deep(.slider-container),
+    .clipped-image-container :deep(.slide-image) {
+        min-height: 260px;
         border-radius: 20px;
     }
 
     .hero-content {
+        width: 100%;
         max-width: 100%;
-
-        padding: 36px 24px;
+        padding: 0;
+        align-items: center;
+        text-align: center;
     }
 
-    .hero-title {
-        font-size: 38px;
-    }
-
-    .clipped-image-container {
-        min-height: 320px;
-
-        clip-path: none;
-
-        -webkit-clip-path: none;
-
-        border-bottom-left-radius: 20px;
-        border-bottom-right-radius: 20px;
-    }
-
-    .clipped-image-container :deep(.slider-container) {
-        min-height: 320px;
-    }
-
-    .clipped-image-container :deep(.slide-image) {
-        min-height: 320px;
-    }
-
-    .desktop-br {
+    .hero-title,
+    .hero-description {
         display: none;
     }
-}
 
-@media (max-width: 600px) {
-
-    .hero-wrapper {
-        margin: 12px auto 24px;
-
-        padding: 0 12px;
-    }
-
-    .hero-content {
-        padding: 24px 16px;
-    }
-
-    .hero-title {
-        font-size: 30px;
-    }
-
-    .hero-description {
-        font-size: 14px;
-
+    .hero-actions {
+        width: 100%;
+        justify-content: center;
+        gap: 12px;
         margin-bottom: 20px;
     }
 
-    .search-box {
-        max-width: 100%;
-
-        padding: 10px 16px;
-    }
-
-    .clipped-image-container {
-        min-height: 240px;
-    }
-
-    .clipped-image-container :deep(.slider-container) {
-        min-height: 240px;
-    }
-
-    .clipped-image-container :deep(.slide-image) {
-        min-height: 240px;
-    }
-}
-
-@media (max-width: 480px) {
-
-    .hero-title {
-        font-size: 26px;
-    }
-
     .btn-book-now {
-        padding: 10px 20px;
+        background: #1A56DB;
+        color: #ffffff;
+        border-radius: 8px;
+        padding: 12px 32px;
+        font-size: 15px;
+        font-weight: 700;
+        border: none;
+        flex: initial;
+    }
 
-        font-size: 14px;
+    .btn-call-icon {
+        background: #ffffff;
+        color: #1A56DB;
+        border: 1.5px solid #1A56DB;
+        border-radius: 8px;
+        width: 48px;
+        height: 44px;
+        box-shadow: none;
+    }
+
+    .search-box {
+        width: 100%;
+        max-width: 100%;
+        background: #ffffff;
+        border: 1.5px solid #1A56DB;
+        border-radius: 12px;
+        padding: 12px 18px;
+        box-shadow: 0 2px 8px rgba(26, 86, 219, 0.06);
     }
 }
 </style>

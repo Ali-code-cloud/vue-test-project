@@ -1,24 +1,48 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useService } from '@/composables/useService'
+import { useFetch } from '@/composables/useFetch'
+
+interface Category {
+    id: number | string
+    name: string
+    image_url?: string
+    image?: string
+    description?: string
+}
 
 const router = useRouter()
-const categories = ref<any[]>([])
-const isLoading = ref(true)
-const service = useService()
+const categories = ref<Category[]>([])
+
+const defaultCategories = [
+    { id: 1, name: 'AC Services', image_url: '/src/assets/ac.png' },
+    { id: 2, name: 'Plumbing', image_url: '/src/assets/plumbing.png' },
+    { id: 3, name: 'Electrical', image_url: '/src/assets/electrical.png' },
+    { id: 4, name: 'Carpentry', image_url: '/src/assets/carpentry.png' },
+    { id: 5, name: 'Cleaning', image_url: '/src/assets/cleaning.png' },
+    { id: 6, name: 'Painting', image_url: '/src/assets/painting.png' }
+]
+
+const { isLoading, execute } = useFetch('/api/service-categories', {
+    immediate: false,
+    fallbackData: defaultCategories
+})
 
 onMounted(async () => {
     try {
-        categories.value = await service.getCategories()
-        isLoading.value = false
+        const res = await execute()
+        const rawCats = res?.data || res || []
+        if (Array.isArray(rawCats) && rawCats.length > 0) {
+            categories.value = rawCats
+        } else {
+            categories.value = defaultCategories
+        }
     } catch (e) {
-        console.log('Failed to load categories:', e)
-        isLoading.value = false
+        categories.value = defaultCategories
     }
 })
 
-const openCategoryServices = (category: any) => {
+const openCategoryServices = (category: Category) => {
     router.push(`/services/category/${category.id}`)
 }
 </script>
@@ -27,8 +51,7 @@ const openCategoryServices = (category: any) => {
     <section class="services-page-section">
         <div class="services-header">
             <h2 class="services-title">Our Service Categories</h2>
-            <p class="services-subtitle">Select a category to view specialized services and rates
-            </p>
+            <p class="services-subtitle">Select a category to view specialized services and rates</p>
         </div>
 
         <div v-if="isLoading" class="loading-wrap">
@@ -37,12 +60,16 @@ const openCategoryServices = (category: any) => {
         </div>
 
         <div v-else class="categories-grid">
-            <div v-for="category in categories" :key="category.id" class="category-card"
-                @click="openCategoryServices(category)">
+            <div 
+                v-for="category in categories" 
+                :key="category.id" 
+                class="category-card"
+                @click="openCategoryServices(category)"
+            >
                 <div class="category-icon-box">
-                    <img :src="category?.image_url" :alt="category?.name" class="category-img" />
+                    <img :src="category.image_url || category.image || '/src/assets/ac.png'" :alt="category.name" class="category-img" />
                 </div>
-                <h3 class="category-name">{{ category?.name }}</h3>
+                <h3 class="category-name">{{ category.name }}</h3>
             </div>
         </div>
     </section>
@@ -58,17 +85,6 @@ const openCategoryServices = (category: any) => {
 .services-header {
     text-align: center;
     margin-bottom: 40px;
-}
-
-.badge-tag {
-    background: #EFF6FF;
-    color: #1A56DB;
-    font-size: 13px;
-    font-weight: 700;
-    padding: 4px 14px;
-    border-radius: 20px;
-    display: inline-block;
-    margin-bottom: 12px;
 }
 
 .services-title {
@@ -107,7 +123,7 @@ const openCategoryServices = (category: any) => {
 
 .categories-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 24px;
 }
 
@@ -156,32 +172,24 @@ const openCategoryServices = (category: any) => {
     margin-bottom: 6px;
 }
 
-.category-desc {
-    font-size: 13px;
-    color: #64748B;
-    line-height: 1.4;
-    margin-bottom: 16px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-.view-services-link {
-    font-size: 14px;
-    font-weight: 700;
-    color: #1A56DB;
-    margin-top: auto;
-}
-
-@media (max-width: 600px) {
+@media (max-width: 768px) {
     .services-page-section {
-        margin: 20px auto;
+        margin: 16px auto 30px;
         padding: 0 12px;
     }
 
+    .services-header {
+        margin-bottom: 20px;
+    }
+
     .services-title {
-        font-size: 1.8rem;
+        font-size: 2rem;
+        font-weight: 900;
+        letter-spacing: -0.5px;
+    }
+
+    .services-subtitle {
+        display: none;
     }
 
     .categories-grid {
@@ -205,3 +213,4 @@ const openCategoryServices = (category: any) => {
     }
 }
 </style>
+

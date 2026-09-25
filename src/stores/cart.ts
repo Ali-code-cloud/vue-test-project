@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import api from '@/composables/useApi'
-import { showSuccessToast, showInfoToast, showErrorToast } from '@/utils/alert'
+import { showSuccessToast, showInfoToast, showErrorToast, showConfirmAlert } from '@/utils/alert'
 
 export interface ServiceItem {
   id: number
@@ -105,41 +105,58 @@ export const useCartStore = defineStore('cart', {
       showSuccessToast(`Added ${service.name} to cart!`)
     },
 
-    updateCartQuantity(serviceId: number, quantity: number) {
+    async updateCartQuantity(serviceId: number, quantity: number) {
       const existing = this.itemsMap[serviceId]
       if (!existing) return
 
       if (quantity <= 0) {
-        return this.removeFromCartApi(serviceId)
+        return await this.removeFromCartApi(serviceId)
       }
 
       existing.quantity = quantity
       this.triggerButtonAnimation()
     },
 
-    decrementFromCart(serviceId: number) {
+    async decrementFromCart(serviceId: number) {
       const existing = this.itemsMap[serviceId]
       if (!existing) return
 
       if (existing.quantity > 1) {
         this.updateCartQuantity(serviceId, existing.quantity - 1)
       } else {
-        const name = existing.service.name
-        delete this.itemsMap[serviceId]
-        showInfoToast(`Removed ${name} from cart`)
+        await this.removeFromCartApi(serviceId)
       }
       this.triggerButtonAnimation()
     },
 
-    removeFromCartApi(serviceId: number) {
+    async removeFromCartApi(serviceId: number, skipConfirm = false) {
       const existing = this.itemsMap[serviceId]
-      const name = existing?.service?.name || 'Item'
+      const name = existing?.service?.name || 'this service'
+
+      if (!skipConfirm) {
+        const confirmRes = await showConfirmAlert(
+          'Remove Service?',
+          `Are you sure you want to remove "${name}" from your cart?`,
+          'Yes, Remove'
+        )
+        if (!confirmRes.isConfirmed) return
+      }
+
       delete this.itemsMap[serviceId]
       this.triggerButtonAnimation()
-      showInfoToast(`Removed ${name} from cart`)
+      showInfoToast(`Removed "${name}" from cart`)
     },
 
-    clearCart() {
+    async clearCart(skipConfirm = false) {
+      if (!skipConfirm && this.cartItemsList.length > 0) {
+        const confirmRes = await showConfirmAlert(
+          'Clear Cart?',
+          'Are you sure you want to remove all items from your cart?',
+          'Yes, Clear Cart'
+        )
+        if (!confirmRes.isConfirmed) return
+      }
+
       this.itemsMap = {}
       this.problemMessage = ''
       this.uploadedPreview = null

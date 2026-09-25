@@ -320,14 +320,27 @@ const finishOrder = () => {
 }
 
 .btn-back {
-  background: #F1F5F9;
-  color: #1A56DB;
-  border: none;
-  padding: 8px 18px;
-  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #EFF6FF;
+  color: #1D4ED8;
+  border: 1.5px solid #BFDBFE;
+  border-radius: 30px;
+  padding: 9px 22px;
   font-weight: 700;
   cursor: pointer;
   font-size: 14px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(29, 78, 216, 0.08);
+}
+
+.btn-back:hover {
+  background: #1D4ED8;
+  color: #ffffff;
+  border-color: #1D4ED8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(29, 78, 216, 0.25);
 }
 
 .cart-page-title {
