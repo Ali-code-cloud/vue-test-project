@@ -1,4 +1,4 @@
-import api from "@/composables/useApi.js";
+import api, { fetchApi } from "@/composables/useApi.js";
 
 // ─── Helper: unwrap Laravel's standard { status, data: [...] } response ───────
 const unwrap = (response) => {
@@ -8,6 +8,10 @@ const unwrap = (response) => {
     return body;
 };
 
+// Read-only lookups go through the shared cache: repeat and simultaneous calls reuse one request
+const cachedGet = (url, params) =>
+    fetchApi(url, params ? { params } : {}).then((body) => unwrap({ data: body }));
+
 export function useService() {
 
     // ── Auth / CSRF ────────────────────────────────────────────────────────
@@ -15,10 +19,10 @@ export function useService() {
 
     // ── Service Categories ─────────────────────────────────────────────────
     const getCategories = () =>
-        api.get("/api/service-categories").then(unwrap);
+        cachedGet("/api/service-categories");
 
     const getCategoryServices = (categoryId) =>
-        api.get(`/api/services/${categoryId}`).then(unwrap);
+        cachedGet(`/api/services/${categoryId}`);
 
     const getServiceDetails = (serviceId) =>
         api.get(`/api/services/${serviceId}`).then(unwrap);
@@ -121,12 +125,19 @@ export function useService() {
         api.delete(`/api/services/${serviceId}/ratings/${ratingId}`).then(unwrap);
 
     // ── Global Search ────────────────────────────────────────────────────────
+    // GET /api/search?q= → { query, services, categories, cities, orders }
     const searchServices = (query) =>
-        api.post("/api/search", { query }).then(unwrap);
+        cachedGet("/api/search", { q: query });
+
+    // ── Website stats ────────────────────────────────────────────────────────
+    // GET /api/stats → { average_rating, max_rating, total_reviews, start_from_price, done_orders }
+    // Not cached: the backend computes it fresh on every request
+    const getStats = () => api.get("/api/stats").then(unwrap);
 
     return {
         csrf,
         searchServices,
+        getStats,
         // Categories
         getCategories,
         getCategoryServices,

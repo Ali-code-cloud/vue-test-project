@@ -4,19 +4,39 @@ import axios, { type AxiosRequestConfig } from 'axios'
 // In-memory cache for GET requests to eliminate duplicate API calls & slow page load delays
 const apiCache = new Map<string, { data: any; timestamp: number }>()
 const CACHE_TTL = 300000 // 5 minutes cache
+const inflight = new Map<string, Promise<any>>()
 
-export const API_BASE_URLS = [
+// Set: on localhost the last entry would repeat localhost:8001 and get probed twice
+export const API_BASE_URLS = [...new Set([
   'http://127.0.0.1:8001',
   'http://mrhomeservices.test:8001',
-  'http://localhost:8001'
-]
+  'http://localhost:8001',
+  // Same machine that served the page, e.g. a phone opening http://192.168.x.x:5173
+  `http://${window.location.hostname}:8001`
+])]
 
 let activeBaseUrl = 'http://127.0.0.1:8001'
 
+export function getActiveBaseUrl(): string {
+  return activeBaseUrl
+}
+
+let probe: Promise<string> | null = null
+
 /**
- * Fast detection of active backend server
+ * Fast detection of active backend server.
+ * Requests that fail at the same time share one probe, and the result is reused for 30s;
+ * before, every failed request probed every server on its own (one HEAD per server each).
  */
-export async function getFastApiBaseUrl(): Promise<string> {
+export function getFastApiBaseUrl(): Promise<string> {
+  if (!probe) {
+    probe = detectApiBaseUrl()
+    probe.finally(() => setTimeout(() => { probe = null }, 30000))
+  }
+  return probe
+}
+
+async function detectApiBaseUrl(): Promise<string> {
   for (const baseUrl of API_BASE_URLS) {
     try {
       const controller = new AbortController()
@@ -35,9 +55,9 @@ export async function getFastApiBaseUrl(): Promise<string> {
 }
 
 // Configured Axios Instance with fast timeout & auto auth token
+// No fixed baseURL: the interceptor uses whichever server was detected last
 export const apiClient = axios.create({
-  baseURL: activeBaseUrl,
-  timeout: 4000,
+  timeout: 15000,
   withCredentials: true,
   headers: {
     Accept: 'application/json',
@@ -51,7 +71,7 @@ apiClient.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
-  if (!config.baseURL || config.baseURL === '' || config.baseURL === 'http://localhost:5173') {
+  if (!config.baseURL || config.baseURL === 'http://localhost:5173') {
     config.baseURL = activeBaseUrl
   }
   return config
@@ -62,8 +82,15 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
+      const hadToken = !!localStorage.getItem('token')
       localStorage.removeItem('token')
       localStorage.removeItem('user')
+      // Token expired or revoked: send the user to log in again. The full reload
+      // also resets the Pinia auth store. The OAuth callback page handles its own 401.
+      const path = window.location.pathname
+      if (hadToken && path !== '/login' && path !== '/auth/callback') {
+        window.location.assign('/login')
+      }
     }
     return Promise.reject(error)
   }
@@ -111,7 +138,7 @@ export function useFetch<T = any>(
     isLoading.value = true
     error.value = null
 
-    try {
+    const request = async () => {
       let res: any
       try {
         res = await apiClient.request<T>({
@@ -133,19 +160,33 @@ export function useFetch<T = any>(
               Accept: 'application/json',
               Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : ''
             },
-            timeout: 3000
+            timeout: 10000
           })
         } else {
           throw err
         }
       }
-
-      const resData = res.data
-      data.value = resData
-
       if (isGet) {
-        apiCache.set(cacheKey, { data: resData, timestamp: Date.now() })
+        apiCache.set(cacheKey, { data: res.data, timestamp: Date.now() })
       }
+      return res.data
+    }
+
+    try {
+      // Components asking for the same GET at the same time share one request,
+      // so a single-threaded backend isn't flooded with duplicates
+      let pending = isGet ? inflight.get(cacheKey) : undefined
+      if (!pending) {
+        pending = request()
+        if (isGet) {
+          inflight.set(cacheKey, pending)
+          const clear = () => inflight.delete(cacheKey)
+          pending.then(clear, clear)
+        }
+      }
+
+      const resData = await pending
+      data.value = resData
 
       return resData
     } catch (err: any) {

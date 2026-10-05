@@ -32,6 +32,17 @@ const routes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/why-mr-home-services',
+    component: DefaultLayout,
+    children: [
+      {
+        path: '',
+        name: 'why-choose-us',
+        component: () => import('@/views/WhyChooseView.vue')
+      }
+    ]
+  },
+  {
     path: '/services',
     component: DefaultLayout,
     children: [
@@ -77,6 +88,11 @@ const routes: RouteRecordRaw[] = [
         path: '',
         name: 'blog',
         component: () => import('@/views/BlogView.vue')
+      },
+      {
+        path: ':slug',
+        name: 'blog-detail',
+        component: () => import('@/views/BlogDetailView.vue')
       }
     ]
   },
@@ -111,6 +127,17 @@ const routes: RouteRecordRaw[] = [
         path: '',
         name: 'login',
         component: () => import('@/views/LoginView.vue')
+      }
+    ]
+  },
+  {
+    path: '/auth/callback',
+    component: AuthLayout,
+    children: [
+      {
+        path: '',
+        name: 'auth-callback',
+        component: () => import('@/views/AuthCallbackView.vue')
       }
     ]
   },

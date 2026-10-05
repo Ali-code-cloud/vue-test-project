@@ -1,13 +1,19 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/composables/useApi'
+import { getActiveBaseUrl } from '@/composables/useFetch'
+
+export type SocialProvider = 'google' | 'facebook'
+
+/** sessionStorage key: where to send the user after the social login round trip */
+export const SOCIAL_REDIRECT_KEY = 'social_login_redirect'
 
 export interface User {
   id: number | string
   name: string
-  email: string
-  phone?: string
-  address?: string
+  email: string | null // null for Facebook accounts registered with a phone number
+  phone?: string | null // null for new social logins; checkout asks for it
+  address?: string | null
   role?: string
   avatar?: string
   joinedDate?: string
@@ -35,21 +41,56 @@ export function getApiError(error: any): string {
   return 'Something went wrong. Please try again.'
 }
 
+/** Login / OTP identifier: the backend takes either { email } or { phone } */
+export type AuthIdentifier = { email: string } | { phone: string }
+
+/** Anything with an @ is an email; everything else is treated as a phone number */
+export function toIdentifier(value: string): AuthIdentifier {
+  const v = value.trim()
+  return v.includes('@') ? { email: v } : { phone: v }
+}
+
+/** Digits after +92: "+92 300 1234567", "923001234567", "03001234567" -> "3001234567" */
+function pkLocalDigits(value: string): string {
+  return value.replace(/\D/g, '').replace(/^(92|0)/, '')
+}
+
+/** Pakistani mobile number (the +92 field gives 03001234567) */
+export function getPhoneError(value: string): string {
+  const digits = pkLocalDigits(value || '')
+  if (!digits) return 'Phone Number is required.'
+  if (!/^3\d{9}$/.test(digits)) return 'Please enter a valid mobile number, e.g. 300 1234567.'
+  return ''
+}
+
+/** For display: 03001234567 -> "+92 300 1234567" */
+export function formatPhone(value?: string | null): string {
+  const digits = pkLocalDigits(value || '')
+  if (!digits) return ''
+  return /^3\d{9}$/.test(digits) ? `+92 ${digits.slice(0, 3)} ${digits.slice(3)}` : (value || '')
+}
+
+export function isPhoneIdentifier(value: string): boolean {
+  return !value.trim().includes('@')
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(JSON.parse(localStorage.getItem('user') || 'null'))
   const token = ref<string | null>(localStorage.getItem('token') || null)
 
   const isAuthenticated = computed(() => !!user.value && !!token.value)
-  async function requestOtp(email: string) {
+  /** POST /api/user/auth/request-otp { email } or { phone } */
+  async function requestOtp(identifier: string) {
+    const body = toIdentifier(identifier)
     try {
-      const { data } = await api.post('/api/user/auth/request-otp', { email })
+      const { data } = await api.post('/api/user/auth/request-otp', body)
       return data
     } catch (err: any) {
       try {
         const res = await fetch('http://mrhomeservices.test:8001/api/user/auth/request-otp', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify({ email })
+          body: JSON.stringify(body)
         })
         const resData = await res.json()
         if (res.ok && resData.status) return resData
@@ -59,16 +100,18 @@ export const useAuthStore = defineStore('auth', () => {
       }
     }
   }
-  async function verifyOtp(email: string, otp: string) {
+  /** POST /api/user/auth/verify-otp — must use the same field as request-otp */
+  async function verifyOtp(identifier: string, otp: string) {
+    const body = { ...toIdentifier(identifier), otp }
     try {
-      const { data } = await api.post('/api/user/auth/verify-otp', { email, otp })
+      const { data } = await api.post('/api/user/auth/verify-otp', body)
       return data
     } catch (err: any) {
       try {
         const res = await fetch('http://mrhomeservices.test:8001/api/user/auth/verify-otp', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify({ email, otp })
+          body: JSON.stringify(body)
         })
         const resData = await res.json()
         if (res.ok && resData.status) return resData
@@ -80,10 +123,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function register(payload: {
-    email: string
+    email?: string // optional when signing up with a phone number
     name: string
-    address: string
-    phone: string
+    address?: string
+    phone?: string
     password: string
     password_confirmation: string
   }) {
@@ -118,20 +161,21 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * 4. Login with email & password
-   * POST http://mrhomeservices.test:8001/api/user/auth/login { email, password }
+   * 4. Login with email or phone + password
+   * POST /api/user/auth/login { email | phone, password }
    */
-  async function login(email: string, password: string) {
+  async function login(identifier: string, password: string) {
+    const body = { ...toIdentifier(identifier), password }
     let resData: any = null
     try {
-      const { data } = await api.post('/api/user/auth/login', { email, password })
+      const { data } = await api.post('/api/user/auth/login', body)
       resData = data
     } catch (err: any) {
       try {
         const res = await fetch('http://mrhomeservices.test:8001/api/user/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify(body)
         })
         resData = await res.json()
         if (!res.ok || !resData.status) {
@@ -160,20 +204,20 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * Forgot Password — sends OTP to email for password reset
-   * POST /api/user/auth/forgot-password { email }
+   * Forgot Password — sends OTP to the phone for password reset
+   * POST /api/user/auth/forgot-password { phone }
    */
-  async function forgotPassword(email: string) {
-    const { data } = await api.post('/api/user/auth/forgot-password', { email })
+  async function forgotPassword(phone: string) {
+    const { data } = await api.post('/api/user/auth/forgot-password', { phone })
     return data
   }
 
   /**
    * Reset Password — uses OTP + new password to reset
-   * POST /api/user/auth/reset-password { email, otp, password, password_confirmation }
+   * POST /api/user/auth/reset-password { phone, otp, password, password_confirmation }
    */
   async function resetPassword(payload: {
-    email: string
+    phone: string
     otp: string
     password: string
     password_confirmation: string
@@ -199,6 +243,33 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  /**
+   * Social login — full-page redirect to the backend, which returns to /auth/callback
+   * GET /api/user/auth/{provider}
+   */
+  function startSocialLogin(provider: SocialProvider, redirectTo?: string) {
+    if (redirectTo) sessionStorage.setItem(SOCIAL_REDIRECT_KEY, redirectTo)
+    window.location.href = `${getActiveBaseUrl()}/api/user/auth/${provider}`
+  }
+
+  /**
+   * Finish social login with the token from the callback URL
+   * GET /api/user/auth/me
+   */
+  async function loginWithToken(newToken: string) {
+    localStorage.setItem('token', newToken)
+    try {
+      const { data } = await api.get('/api/user/auth/me')
+      const userData = data?.data?.user
+      if (!userData) throw new Error('Could not load your account.')
+      setAuth(newToken, userData)
+      return userData as User
+    } catch (e) {
+      logout()
+      throw e
+    }
+  }
+
   /** Persist token + user in localStorage and reactive refs */
   function setAuth(newToken: string, userData: any) {
     token.value = newToken
@@ -207,8 +278,18 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('user', JSON.stringify(userData))
   }
 
-  /** Clear auth state */
+  /**
+   * Revoke the token on the backend (best effort) and clear auth state
+   * POST /api/user/auth/logout
+   */
   function logout() {
+    if (token.value) {
+      fetch(`${getActiveBaseUrl()}/api/user/auth/logout`, {
+        method: 'POST',
+        keepalive: true,
+        headers: { Authorization: `Bearer ${token.value}`, Accept: 'application/json' }
+      }).catch(() => {})
+    }
     user.value = null
     token.value = null
     localStorage.removeItem('user')
@@ -227,6 +308,8 @@ export const useAuthStore = defineStore('auth', () => {
     resetPassword,
     fetchUser,
     setAuth,
+    startSocialLogin,
+    loginWithToken,
     updateProfile,
     logout
   }

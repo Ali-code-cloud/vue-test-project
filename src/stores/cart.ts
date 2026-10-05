@@ -8,12 +8,23 @@ export interface ServiceItem {
   name: string
   slug?: string
   short_description?: string | null
+  description?: string | null
   original_price: string | number
   discounted_price: string | number
   unit?: string | null
   rating?: string | number
+  review_count?: number
   image?: string | null
 }
+
+/** Customer's location for the order; source is 'live' (GPS) or 'manual' (map pin) */
+export interface OrderLocation {
+  latitude: number
+  longitude: number
+  source: 'live' | 'manual'
+}
+
+export const LOCATION_REQUIRED = 'Location is required. Please share your live location or pin your address on the map.'
 
 export interface CartEntry {
   service: ServiceItem
@@ -50,8 +61,16 @@ export const useCartStore = defineStore('cart', {
     itemsMap: {} as Record<number, CartEntry>,
     selectedDateNum: 18,
     selectedTimeSlot: '09:00 AM',
-    selectedAddress: 'Suite 402, Block H-3, Johar Town, Lahore',
+    // Service location (checkout): house/flat/street text + optional city and town
+    selectedAddress: '',
+    selectedCity: '',
+    selectedTown: '',
+    locationMode: 'live' as 'live' | 'manual',
+    addressError: '',
     problemMessage: '',
+    // Required at checkout: live GPS or a pin dropped on the map
+    orderLocation: null as OrderLocation | null,
+    locationError: '',
     uploadedPreview: null as string | null,
     
     // Auth & Modal States
@@ -62,6 +81,7 @@ export const useCartStore = defineStore('cart', {
     
     // Order Success Modal State
     showSuccessModal: false,
+    lastOrder: null as any,
     
     // Animation trigger for bottom floating button
     buttonJustAnimated: false
@@ -181,6 +201,9 @@ export const useCartStore = defineStore('cart', {
       booking_date: string
       booking_time_slot: string
       notes: string
+      latitude: number
+      longitude: number
+      location_source: 'live' | 'manual'
     }>) {
       const token = localStorage.getItem('token')
       const user = JSON.parse(localStorage.getItem('user') || 'null')
@@ -192,7 +215,8 @@ export const useCartStore = defineStore('cart', {
       }
 
       // Pre-check 2: Address validation
-      const finalAddress = (orderData?.address || user?.address || this.selectedAddress || '').trim()
+      // The address typed on the checkout page wins over the one saved on the profile
+      const finalAddress = (orderData?.address || this.selectedAddress || user?.address || '').trim()
       if (!finalAddress) {
         throw new Error('Address field is required. Please fill in your address to place an order.')
       }
@@ -203,7 +227,14 @@ export const useCartStore = defineStore('cart', {
         throw new Error('Phone number is required. Please confirm your phone number before placing an order.')
       }
 
-      // Pre-check 4: At least one item selected
+      // Pre-check 4: Location (live GPS or map pin) is required by the backend
+      const location = this.locationPayload(orderData)
+      if (!location) {
+        this.locationError = LOCATION_REQUIRED
+        throw new Error(LOCATION_REQUIRED)
+      }
+
+      // Pre-check 5: At least one item selected
       if (this.cartItemsList.length === 0) {
         throw new Error('Cannot place order: Please select at least one service to order.')
       }
@@ -221,11 +252,12 @@ export const useCartStore = defineStore('cart', {
         customer_email: orderData?.customer_email || user?.email || 'customer@example.com',
         customer_phone: finalPhone,
         address: finalAddress,
-        city: orderData?.city || 'Lahore',
-        town: orderData?.town || 'Johar Town',
+        city: (orderData?.city || this.selectedCity).trim() || null,
+        town: (orderData?.town || this.selectedTown).trim() || null,
         booking_date: orderData?.booking_date || `2026-09-${String(this.selectedDateNum).padStart(2, '0')}`,
         booking_time_slot: orderData?.booking_time_slot || this.selectedTimeSlot || '10:00 AM - 12:00 PM',
-        notes: orderData?.notes || this.problemMessage || ''
+        notes: orderData?.notes || this.problemMessage || '',
+        ...location
       }
 
       let resData: any = null
@@ -259,12 +291,30 @@ export const useCartStore = defineStore('cart', {
       }
 
       if (resData?.status) {
+        this.lastOrder = resData?.data || null
         this.itemsMap = {}
+        this.orderLocation = null
         this.problemMessage = ''
         this.uploadedPreview = null
         this.showSuccessModal = true
       }
       return resData
+    },
+
+    /** latitude/longitude/location_source for POST /api/orders/checkout; null when there is no location yet */
+    locationPayload(orderData?: { latitude?: number; longitude?: number; location_source?: 'live' | 'manual' }) {
+      if (orderData?.latitude != null && orderData?.longitude != null) {
+        return {
+          latitude: orderData.latitude,
+          longitude: orderData.longitude,
+          location_source: orderData.location_source || 'live'
+        }
+      }
+      if (this.orderLocation) {
+        const { latitude, longitude, source } = this.orderLocation
+        return { latitude, longitude, location_source: source }
+      }
+      return null
     },
 
     async checkoutOrder(orderData?: any) {

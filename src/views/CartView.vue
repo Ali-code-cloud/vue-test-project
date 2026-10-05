@@ -48,18 +48,8 @@
             </div>
           </div>
 
-          <!-- 2. Address Card -->
-          <div class="checkout-section-box address-box">
-            <div class="address-header">
-              <div>
-                <h4 class="address-title">Address</h4>
-                <p class="address-subtitle">{{ cartStore.selectedAddress || 'Please add your address' }}</p>
-              </div>
-              <button class="btn-add-address" @click="openAddAddressModal">
-                Add New ▾
-              </button>
-            </div>
-          </div>
+          <!-- 2. Service Location (live GPS or manual address) -->
+          <CheckoutLocation />
 
           <!-- 3. Items Section -->
           <div class="checkout-section-box">
@@ -173,8 +163,15 @@
           cartStore.selectedDateNum }}, at {{ cartStore.selectedTimeSlot }}.</p>
 
         <div class="modal-order-details">
-          <p><strong>Address:</strong> {{ cartStore.selectedAddress }}</p>
-          <p><strong>Total Amount:</strong> Rs {{ cartStore.totalCartPrice }}</p>
+          <p v-if="cartStore.lastOrder?.order_number"><strong>Order #:</strong> {{ cartStore.lastOrder.order_number }}</p>
+          <p><strong>Address:</strong> {{ orderAddressText }}</p>
+          <p v-if="cartStore.lastOrder?.latitude != null">
+            <strong>Location:</strong>
+            {{ cartStore.lastOrder.location_source === 'live' ? 'Live GPS' : 'Pin on map' }} ·
+            <a :href="`https://www.google.com/maps?q=${cartStore.lastOrder.latitude},${cartStore.lastOrder.longitude}`"
+              target="_blank" rel="noopener">Open in Maps</a>
+          </p>
+          <p><strong>Total Amount:</strong> Rs {{ Math.round(Number(cartStore.lastOrder?.total_amount ?? 0)) }}</p>
           <p><strong>Payment:</strong> Cash on Delivery</p>
         </div>
 
@@ -187,11 +184,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useCartStore } from '@/stores/cart'
+import { useCartStore, LOCATION_REQUIRED } from '@/stores/cart'
 import { useAuthStore } from '@/stores/auth'
 import { showPromptAlert, showErrorAlert } from '@/utils/alert'
+import CheckoutLocation from '@/components/CheckoutLocation.vue'
 
 const router = useRouter()
 const cartStore = useCartStore()
@@ -234,12 +232,12 @@ const goBack = () => {
   router.push('/services')
 }
 
-const openAddAddressModal = async () => {
-  const result = await showPromptAlert('Delivery Address', 'Enter your complete delivery address:', cartStore.selectedAddress)
-  if (result.isConfirmed && result.value && result.value.trim()) {
-    cartStore.selectedAddress = result.value.trim()
-  }
-}
+// Address line for the success modal, from the order the backend saved
+const orderAddressText = computed(() => {
+  const o = cartStore.lastOrder
+  if (!o) return cartStore.selectedAddress
+  return [o.address, o.town, o.city].filter(Boolean).join(', ')
+})
 
 const triggerImageUpload = () => {
   if (fileInput.value) {
@@ -261,15 +259,18 @@ const handlePlaceOrder = async () => {
     return
   }
 
-  const userAddress = (authStore.user?.address || cartStore.selectedAddress || '').trim()
-  if (!userAddress) {
-    const result = await showPromptAlert('Address Required', 'Please enter your delivery address to place an order:', cartStore.selectedAddress)
-    if (result.isConfirmed && result.value && result.value.trim()) {
-      cartStore.selectedAddress = result.value.trim()
-    } else {
-      await showErrorAlert('Address Required', 'Address field is required. Please fill in your address to place an order.')
-      return
-    }
+  // Location is required: live GPS or a pin on the map
+  if (!cartStore.orderLocation) {
+    showLocationError(LOCATION_REQUIRED)
+    return
+  }
+
+  if (!cartStore.selectedAddress.trim()) {
+    cartStore.addressError = 'Please enter your house, flat or street address.'
+    const field = document.getElementById('checkout-address')
+    field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    field?.focus({ preventScroll: true })
+    return
   }
 
   const userPhone = (authStore.user?.phone || cartStore.userPhoneNumber || '').trim()
@@ -288,10 +289,21 @@ const handlePlaceOrder = async () => {
     await cartStore.placeOrder()
   } catch (err: any) {
     orderError.value = err.message || 'Failed to place order. Please try again.'
+    // Backend 422 on latitude/longitude (missing or invalid): ask for the location again on the card
+    if (/location/i.test(orderError.value)) {
+      cartStore.orderLocation = null
+      showLocationError(orderError.value.replace(/\s*\(and \d+ more errors?\)$/, ''))
+      return
+    }
     await showErrorAlert('Order Placement Failed', orderError.value)
   } finally {
     isPlacingOrder.value = false
   }
+}
+
+function showLocationError(message: string) {
+  cartStore.locationError = message
+  document.getElementById('checkout-location')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 const finishOrder = () => {
@@ -387,8 +399,14 @@ const finishOrder = () => {
 /* Grid Layout matching Screenshot 4 */
 .checkout-grid {
   display: grid;
-  grid-template-columns: 1.5fr 1fr;
+  /* minmax(0, …) stops the wide date strip from stretching the columns past the screen */
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
   gap: 28px;
+}
+
+.checkout-left-col,
+.checkout-right-col {
+  min-width: 0;
 }
 
 .checkout-section-box {
@@ -476,34 +494,6 @@ const finishOrder = () => {
   background: #1A56DB;
   color: white;
   border-color: #1A56DB;
-}
-
-/* Address Box */
-.address-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.address-title {
-  font-size: 16px;
-  font-weight: 800;
-  color: #0F172A;
-  margin-bottom: 4px;
-}
-
-.address-subtitle {
-  font-size: 14px;
-  color: #64748B;
-}
-
-.btn-add-address {
-  color: #1A56DB;
-  background: transparent;
-  border: none;
-  font-weight: 700;
-  cursor: pointer;
-  font-size: 14px;
 }
 
 /* Checkout Items */
@@ -864,7 +854,8 @@ const finishOrder = () => {
 
 @media (max-width: 900px) {
   .checkout-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
   }
 }
 
@@ -887,12 +878,37 @@ const finishOrder = () => {
   .billing-card,
   .upload-section-card,
   .additional-info-card {
-    padding: 16px 12px;
+    padding: 16px 14px;
     border-radius: 12px;
+    margin-bottom: 16px;
+  }
+
+  .checkout-section-title {
+    font-size: 16px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .days-slider {
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .days-slider::-webkit-scrollbar {
+    display: none;
+  }
+
+  .day-pill {
+    flex-shrink: 0;
+    min-width: 48px;
   }
 
   .time-slots-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .time-pill {
+    padding: 10px 4px;
   }
 
   .checkout-item-row {
@@ -903,12 +919,40 @@ const finishOrder = () => {
   .checkout-item-img {
     width: 44px;
     height: 44px;
+    flex-shrink: 0;
+  }
+
+  .checkout-item-details {
+    min-width: 0;
+  }
+
+  .checkout-item-details h4 {
+    font-size: 13px;
+    line-height: 1.3;
+  }
+
+  .stepper-box {
+    flex-shrink: 0;
+  }
+
+  .billing-row {
+    gap: 12px;
+    font-size: 13px;
+  }
+
+  .billing-row span:last-child {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .problem-textarea {
+    box-sizing: border-box;
+    font-size: 16px; /* 16px keeps iOS from zooming in on focus */
   }
 
   .floating-cart-bar {
     left: 12px;
     right: 12px;
-    bottom: 16px;
     width: calc(100% - 24px);
   }
 
@@ -916,6 +960,13 @@ const finishOrder = () => {
     justify-content: space-between;
     width: 100%;
     padding: 8px 12px 8px 16px;
+  }
+}
+
+/* Sit above the fixed bottom menu bar (64px tall, shown at 768px and below) */
+@media (max-width: 768px) {
+  .floating-cart-bar {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 }
 </style>

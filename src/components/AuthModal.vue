@@ -5,47 +5,65 @@
         <!-- Close Button -->
         <button class="btn-close-modal" @click="close" aria-label="Close modal">✕</button>
         <div v-if="cartStore.authModalStep === 'welcome'" class="modal-body welcome-step">
-          <h2 class="modal-title">Welcome to mr home services</h2>
-          <p class="modal-subtitle">Get started!</p>
+          <div class="verify-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z" />
+            </svg>
+          </div>
+          <h2 class="modal-title">Verify Your Phone</h2>
+          <p class="modal-subtitle">Enter your Pakistani phone number to receive a secure verification code.</p>
 
           <form @submit.prevent="handleEmailSubmit" class="auth-form" novalidate>
             <div v-if="authError" class="warning-text">{{ authError }}</div>
 
             <div class="form-field">
-              <input type="text" v-model="emailInput" placeholder="Phone Number or Email *" class="input-phone-pill" :class="{ 'has-error': step1Error }" @input="step1Error = ''" />
+              <label for="auth-phone" class="field-label">Phone Number</label>
+              <PhoneInput id="auth-phone" v-model="emailInput" class="phone-box" :class="{ invalid: step1Error }"
+                @input="step1Error = ''" />
               <span v-if="step1Error" class="field-error-text">{{ step1Error }}</span>
             </div>
 
-            <button type="submit" class="btn-continue-black" :disabled="isSending">
+            <button type="submit" class="btn-continue" :disabled="isSending">
               {{ isSending ? 'Sending OTP...' : 'Continue' }}
             </button>
           </form>
 
-          <div class="bottom-signin-wrap">
-            <button type="button" @click="cartStore.authModalStep = 'login'" class="btn-signin-pill">
-              Sign In
-            </button>
-          </div>
+          <SocialLoginButtons :redirect-to="route.fullPath" />
 
-          <div class="modal-footer-links">
-            <p>Here you can see <router-link to="/terms" @click="close">Terms & Conditions</router-link></p>
-            <p>Visit our <router-link to="/privacy" @click="close">Privacy Policy</router-link></p>
+          <p class="signin-line">
+            Already have a password?
+            <a href="#" class="blue-link" @click.prevent="cartStore.authModalStep = 'login'">Sign In</a>
+          </p>
+
+          <p class="terms-line">
+            By continuing you agree to our
+            <router-link to="/terms" @click="close">Terms</router-link> &amp;
+            <router-link to="/privacy" @click="close">Privacy Policy</router-link>
+          </p>
+
+          <div class="secured-by">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <path d="m9 12 2 2 4-4" />
+            </svg>
+            Secured by Mr Home Services
           </div>
         </div>
 
         <!-- STEP 4: PASSWORD SIGN IN SCREEN IN MODAL -->
         <div v-else-if="cartStore.authModalStep === 'login'" class="modal-body login-step">
           <h2 class="modal-title">Welcome Back</h2>
-          <p class="modal-subtitle">Sign in with your email & password</p>
+          <p class="modal-subtitle">Sign in with your phone number and password</p>
 
           <form @submit.prevent="handleModalPasswordLogin" class="auth-form modal-register-form" novalidate>
             <div v-if="authError" class="warning-text">{{ authError }}</div>
 
             <div class="form-field">
-              <input 
-                type="email" 
-                v-model="loginEmail" 
-                placeholder="Email Address *" 
+              <PhoneInput
+                v-model="loginEmail"
+                placeholder="Phone Number *"
                 class="input-phone-pill text-left"
                 :class="{ 'has-error': loginErrors.email }" 
                 @input="loginErrors.email = ''" 
@@ -88,7 +106,7 @@
         <div v-else-if="cartStore.authModalStep === 'otp'" class="modal-body otp-step">
           <h2 class="modal-title">OTP Verification</h2>
           <p class="modal-subtitle">Enter the 6-digit code sent to</p>
-          <p class="phone-display">{{ cartStore.userPhoneNumber }}</p>
+          <p class="phone-display">{{ formatPhone(cartStore.userPhoneNumber) }}</p>
 
           <form @submit.prevent="handleVerifyOtp" class="auth-form" novalidate>
             <div v-if="authError" class="warning-text">{{ authError }}</div>
@@ -127,7 +145,7 @@
         <!-- STEP 3: REGISTRATION SCREEN -->
         <div v-else-if="cartStore.authModalStep === 'register'" class="modal-body register-step">
           <h2 class="modal-title">Complete Registration</h2>
-          <p class="modal-subtitle">Enter your details for {{ cartStore.userPhoneNumber }}</p>
+          <p class="modal-subtitle">Enter your details for {{ formatPhone(cartStore.userPhoneNumber) }}</p>
 
           <form @submit.prevent="handleModalRegister" class="auth-form modal-register-form" novalidate>
             <div v-if="authError" class="warning-text">{{ authError }}</div>
@@ -138,8 +156,8 @@
               <span v-if="regErrors.name" class="field-error-text">{{ regErrors.name }}</span>
             </div>
 
-            <div class="form-field">
-              <input type="tel" v-model="regPhone" placeholder="Phone Number *" class="input-phone-pill text-left"
+            <div v-if="!signedUpWithPhone" class="form-field">
+              <PhoneInput v-model="regPhone" placeholder="Phone Number *" class="input-phone-pill text-left"
                 :class="{ 'has-error': regErrors.phone }" @input="regErrors.phone = ''" />
               <span v-if="regErrors.phone" class="field-error-text">{{ regErrors.phone }}</span>
             </div>
@@ -174,14 +192,17 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useCartStore } from '@/stores/cart'
-import { useAuthStore, getApiError } from '@/stores/auth'
+import { useAuthStore, getApiError, isPhoneIdentifier, getPhoneError, formatPhone } from '@/stores/auth'
 import { showSuccessToast, showErrorToast } from '@/utils/alert'
+import SocialLoginButtons from '@/components/SocialLoginButtons.vue'
+import PhoneInput from '@/components/PhoneInput.vue'
 
 const cartStore = useCartStore()
 const authStore = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 
 const emailInput = ref('')
 const otpDigits = ref<string[]>(['', '', '', '', '', ''])
@@ -201,6 +222,7 @@ const regPassword = ref('')
 const regConfirmPassword = ref('')
 
 const step1Error = ref('')
+const signedUpWithPhone = computed(() => isPhoneIdentifier(cartStore.userPhoneNumber || ''))
 const regErrors = ref({
   name: '',
   phone: '',
@@ -241,6 +263,8 @@ watch(() => cartStore.authModalStep, (newStep) => {
     authError.value = ''
   } else if (newStep === 'register') {
     clearRegErrors()
+    // The verified phone number is the account's phone; no need to type it again
+    if (signedUpWithPhone.value) regPhone.value = cartStore.userPhoneNumber.trim()
   }
 })
 
@@ -265,15 +289,18 @@ const backToWelcome = () => {
   step1Error.value = ''
 }
 
-/** Step 1: Send OTP to the entered email/phone via API */
+/** Step 1: Send OTP to the entered phone number via API */
 const handleEmailSubmit = async () => {
   authError.value = ''
-  step1Error.value = ''
+  step1Error.value = getPhoneError(emailInput.value)
+  if (step1Error.value) return
+  // The +92 field gives the local format the backend stores (03001234567)
+  const phone = emailInput.value
 
   isSending.value = true
   try {
-    await authStore.requestOtp((emailInput.value || '').trim())
-    cartStore.proceedToOtp((emailInput.value || '').trim())
+    await authStore.requestOtp(phone)
+    cartStore.proceedToOtp(phone)
     startTimer()
     showSuccessToast('OTP code sent successfully!')
   } catch (e: any) {
@@ -347,10 +374,8 @@ const handleModalPasswordLogin = async () => {
   loginErrors.value = { email: '', password: '' }
   authError.value = ''
 
-  if (!loginEmail.value || !loginEmail.value.trim()) {
-    loginErrors.value.email = 'Email address is required.'
-    return
-  }
+  loginErrors.value.email = getPhoneError(loginEmail.value)
+  if (loginErrors.value.email) return
   if (!loginPassword.value || !loginPassword.value.trim()) {
     loginErrors.value.password = 'Password is required.'
     return
@@ -371,6 +396,7 @@ const handleModalPasswordLogin = async () => {
     if (e.response?.data?.errors) {
       const errs = e.response.data.errors
       if (errs.email) loginErrors.value.email = Array.isArray(errs.email) ? errs.email[0] : errs.email
+      if (errs.phone) loginErrors.value.email = Array.isArray(errs.phone) ? errs.phone[0] : errs.phone
       if (errs.password) loginErrors.value.password = Array.isArray(errs.password) ? errs.password[0] : errs.password
     }
     if (!loginErrors.value.email && !loginErrors.value.password) {
@@ -388,9 +414,10 @@ const handleModalRegister = async () => {
   isRegistering.value = true
   try {
     await authStore.register({
-      email: cartStore.userPhoneNumber,
+      // Send the verified identifier; email is optional for phone sign-ups
+      ...(signedUpWithPhone.value ? {} : { email: cartStore.userPhoneNumber.trim() }),
       name: (regName.value || '').trim(),
-      phone: (regPhone.value || '').trim(),
+      phone: signedUpWithPhone.value ? cartStore.userPhoneNumber.trim() : (regPhone.value || '').trim(),
       address: (regAddress.value || '').trim(),
       password: regPassword.value,
       password_confirmation: regConfirmPassword.value
@@ -415,29 +442,96 @@ const handleModalRegister = async () => {
 </script>
 
 <style scoped>
-.bottom-signin-wrap {
-  margin-top: 24px;
-  margin-bottom: 24px;
+/* Phone step (card design) */
+.verify-icon {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 18px;
+  border-radius: 16px;
+  background: #E0EAFF;
+  color: #1A56DB;
   display: flex;
+  align-items: center;
   justify-content: center;
 }
 
-.btn-signin-pill {
-  background: #0D52CD;
-  color: #ffffff;
-  border: none;
-  border-radius: 40px;
-  padding: 12px 36px;
-  font-size: 15px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.2s, transform 0.1s;
-  box-shadow: 0 4px 14px rgba(13, 82, 205, 0.25);
+.welcome-step .modal-subtitle {
+  max-width: 320px;
+  margin-left: auto;
+  margin-right: auto;
+  color: #64748B;
+  line-height: 1.55;
 }
 
-.btn-signin-pill:hover {
-  background: #0B46B3;
-  transform: translateY(-1px);
+.field-label {
+  display: block;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748B;
+  margin-bottom: 8px;
+}
+
+.phone-box {
+  background: #FFFFFF;
+  border: 1.5px solid #CBD5E1;
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-size: 16px;
+  color: #0F172A;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.phone-box:focus-within {
+  border-color: #1A56DB;
+  box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.12);
+}
+
+.phone-box.invalid {
+  border-color: #DC2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.signin-line {
+  margin-top: 20px;
+  font-size: 14px;
+  color: #475569;
+}
+
+.signin-line .blue-link {
+  font-weight: 700;
+}
+
+.terms-line {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #94A3B8;
+}
+
+.terms-line a {
+  color: #64748B;
+  text-decoration: underline;
+}
+
+.secured-by {
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #94A3B8;
+}
+
+.secured-by svg {
+  color: #1A56DB;
+}
+
+.welcome-step .auth-form {
+  margin-bottom: 0;
 }
 
 .modal-forgot-wrap {
@@ -456,11 +550,13 @@ const handleModalRegister = async () => {
 }
 
 .auth-modal-card {
-  background: #ffffff;
+  background: #F8FAFC;
   border-radius: 28px;
   width: 100%;
-  max-width: 680px;
-  padding: 56px 40px 48px;
+  max-width: 460px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  padding: 40px 36px 28px;
   position: relative;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
   text-align: center;
@@ -486,13 +582,12 @@ const handleModalRegister = async () => {
 }
 
 .modal-title {
-  font-size: 32px;
-  font-weight: 500;
-  color: #000000;
+  font-size: 26px;
+  font-weight: 800;
+  color: #0F172A;
   line-height: 1.25;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   letter-spacing: -0.5px;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .modal-subtitle {
@@ -551,6 +646,11 @@ const handleModalRegister = async () => {
   background: #ffffff;
 }
 
+/* Hide the hint as soon as the field is tapped */
+.input-phone-pill:focus::placeholder {
+  color: transparent;
+}
+
 .input-phone-pill.has-error {
   border-color: #DC2626 !important;
   background: #FEF2F2 !important;
@@ -584,6 +684,32 @@ const handleModalRegister = async () => {
 
 .btn-continue-black:hover {
   opacity: 0.9;
+}
+
+.btn-continue {
+  display: block;
+  width: 100%;
+  margin-top: 24px;
+  padding: 15px 24px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #1A56DB 0%, #3B82F6 100%);
+  color: #FFFFFF;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(26, 86, 219, 0.28);
+  transition: transform 0.15s, box-shadow 0.2s, opacity 0.2s;
+}
+
+.btn-continue:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(26, 86, 219, 0.34);
+}
+
+.btn-continue:disabled {
+  opacity: 0.7;
+  cursor: wait;
 }
 
 /* OTP Digits Row */

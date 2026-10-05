@@ -1,22 +1,18 @@
 <template>
   <div class="forgot-password-page">
-    <!-- Step 1: Input Email -->
+    <!-- Step 1: Input Phone -->
     <div v-if="currentStep === 1" class="step-box">
       <h3>Forgot Password?</h3>
-      <p class="step-desc">Enter your registered email to receive a verification OTP code.</p>
+      <p class="step-desc">Enter your registered phone number to receive a verification OTP code.</p>
 
       <form @submit.prevent="handleSendOtp" class="auth-form" novalidate>
         <div v-if="errorMsg" class="error-alert">{{ errorMsg }}</div>
         <div v-if="successMsg" class="success-alert">{{ successMsg }}</div>
 
         <div class="form-group">
-          <label>Email Address</label>
-          <input 
-            type="email" 
-            v-model="email" 
-            placeholder="user@example.com" 
-            class="input-field"
-          />
+          <label>Phone Number</label>
+          <PhoneInput v-model="phone" class="input-field" :class="{ invalid: phoneError }" @input="phoneError = ''" />
+          <span v-if="phoneError" class="field-error">{{ phoneError }}</span>
         </div>
 
         <button type="submit" class="btn-primary-auth" :disabled="isLoading">
@@ -34,7 +30,7 @@
     <div v-else-if="currentStep === 2" class="step-box">
       <h3>Confirm OTP Code</h3>
       <p class="step-desc">
-        We sent a 6-digit code to <strong>{{ email }}</strong>
+        We sent a 6-digit code to <strong>{{ formatPhone(phone) }}</strong>
       </p>
 
       <form @submit.prevent="handleVerifyOtp" class="auth-form" novalidate>
@@ -77,7 +73,7 @@
         </div>
 
         <div class="back-link-wrap">
-          <button type="button" @click="currentStep = 1; errorMsg = ''; successMsg = ''" class="back-link-btn">← Change Email</button>
+          <button type="button" @click="currentStep = 1; errorMsg = ''; successMsg = ''" class="back-link-btn">← Change Number</button>
         </div>
       </form>
     </div>
@@ -123,14 +119,16 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore, getApiError } from '@/stores/auth'
+import { useAuthStore, getApiError, getPhoneError, formatPhone } from '@/stores/auth'
+import PhoneInput from '@/components/PhoneInput.vue'
 import { showSuccessToast, showErrorToast } from '@/utils/alert'
 
 const authStore = useAuthStore()
 const router = useRouter()
 
 const currentStep = ref<1 | 2 | 3>(1)
-const email = ref('')
+const phone = ref('')
+const phoneError = ref('')
 const otpDigits = ref(['', '', '', '', '', ''])
 const otpRefs = ref<any[]>([])
 const newPassword = ref('')
@@ -161,10 +159,12 @@ const startResendTimer = () => {
 const handleSendOtp = async () => {
   errorMsg.value = ''
   successMsg.value = ''
+  phoneError.value = getPhoneError(phone.value)
+  if (phoneError.value) return
 
   isLoading.value = true
   try {
-    const data = await authStore.forgotPassword(email.value.trim())
+    const data = await authStore.forgotPassword(phone.value)
     successMsg.value = data.message || 'OTP sent successfully!'
     showSuccessToast(successMsg.value)
     currentStep.value = 2
@@ -207,7 +207,7 @@ const handleVerifyOtp = async () => {
 
   isLoading.value = true
   try {
-    const data = await authStore.verifyOtp(email.value, enteredOtp)
+    const data = await authStore.verifyOtp(phone.value, enteredOtp)
     verifiedOtp.value = enteredOtp
     successMsg.value = data.message || 'OTP verified!'
     showSuccessToast('OTP verified!')
@@ -228,7 +228,7 @@ const handleResetPassword = async () => {
   isLoading.value = true
   try {
     const data = await authStore.resetPassword({
-      email: email.value,
+      phone: phone.value,
       otp: verifiedOtp.value,
       password: newPassword.value,
       password_confirmation: confirmPassword.value
@@ -316,9 +316,20 @@ const handleResetPassword = async () => {
   transition: border-color 0.2s;
 }
 
-.input-field:focus {
+.input-field:focus,
+.input-field:focus-within {
   border-color: #1A56DB;
   box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.12);
+}
+
+.input-field.invalid {
+  border-color: #DC2626;
+}
+
+.field-error {
+  color: #DC2626;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .otp-inputs {

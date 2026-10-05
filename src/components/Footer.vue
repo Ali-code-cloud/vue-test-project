@@ -5,6 +5,7 @@ import { useCartStore } from '@/stores/cart'
 import { useAuthStore } from '@/stores/auth'
 import { fetchApi, useFetch } from '@/composables/useFetch'
 import { showSuccessToast, showErrorToast } from '@/utils/alert'
+import { useCities } from '@/composables/useCities'
 
 interface Category {
     id: number | string
@@ -19,8 +20,6 @@ const authStore = useAuthStore()
 const email = ref('')
 const isSubmitting = ref(false)
 
-const defaultCities = ['Lahore', 'Karachi', 'Islamabad', 'Rawalpindi', 'Multan', 'Sheikhupura']
-
 const defaultCategories = [
     { id: 1, name: 'AC Services' },
     { id: 2, name: 'Carpenter Services' },
@@ -34,16 +33,11 @@ const defaultCategories = [
 ]
 
 const categories = ref<Category[]>([])
-const cities = ref<string[]>([])
+const { cities, isLoading: isLoadingCities } = useCities()
 
 const { execute: fetchCategories } = useFetch('/api/service-categories', {
     immediate: false,
     fallbackData: defaultCategories
-})
-
-const { execute: fetchCities } = useFetch('/api/active-cities', {
-    immediate: false,
-    fallbackData: defaultCities
 })
 
 onMounted(async () => {
@@ -64,17 +58,6 @@ onMounted(async () => {
         categories.value = defaultCategories
     }
 
-    try {
-        const resCities = await fetchCities()
-        const rawCities = resCities?.data || resCities || []
-        if (Array.isArray(rawCities) && rawCities.length > 0) {
-            cities.value = rawCities.map((c: any) => typeof c === 'string' ? c : (c.name || c.city_name || String(c)))
-        } else {
-            cities.value = defaultCities
-        }
-    } catch (e) {
-        cities.value = defaultCities
-    }
 })
 
 const handleSubscribe = async () => {
@@ -137,6 +120,7 @@ const handleSubscribe = async () => {
                 <div class="footer-col">
                     <h3 class="col-title">Available in</h3>
                     <ul class="footer-links city-links">
+                        <li v-if="isLoadingCities && cities.length === 0" class="city-loading">Loading cities...</li>
                         <li v-for="city in cities" :key="city">
                             <a href="#" @click.prevent>
                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="pin-svg">
@@ -155,6 +139,7 @@ const handleSubscribe = async () => {
                     <ul class="footer-links">
                         <li><router-link to="/">Home</router-link></li>
                         <li><router-link to="/about">About Us</router-link></li>
+                        <li><router-link to="/why-mr-home-services">Why Mr Home Services</router-link></li>
                         <li><router-link to="/contact">Contact Us</router-link></li>
                         <li><router-link to="/privacy">Privacy Policy</router-link></li>
                         <li><router-link to="/terms">Terms & Conditions</router-link></li>
@@ -406,6 +391,11 @@ const handleSubscribe = async () => {
     color: #FFFFFF;
     transform: translateX(4px);
     text-decoration: underline;
+}
+
+.city-loading {
+    opacity: 0.7;
+    font-size: 14px;
 }
 
 .city-links a {

@@ -1,25 +1,100 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useCartStore } from '@/stores/cart'
 import { useAuthStore, getApiError } from '@/stores/auth'
+import PhoneInput from '@/components/PhoneInput.vue'
+import { useCartStore } from '@/stores/cart'
+import { useCities } from '@/composables/useCities'
+import { useService } from '@/composables/useService'
 import api from '@/composables/useApi'
 
 import HeroSlider from '@/components/HeroSlider.vue'
 
 import technicianImg from '@/assets/technician_hero.png'
+import electricianImg from '@/assets/hero-slider/1.jpg'
+import plumberImg from '@/assets/hero-slider/2.jpg'
 
 const router = useRouter()
-const cartStore = useCartStore()
 const authStore = useAuthStore()
+const cartStore = useCartStore()
+const { cities } = useCities()
+const service = useService()
 
 const searchQuery = ref('')
 
+// Add more images here; the slider auto-plays when there are 2 or more
 const heroSlides = [
-    {
-        id: 1,
-        image: technicianImg
+    { id: 1, image: technicianImg },
+    { id: 2, image: electricianImg },
+    { id: 3, image: plumberImg }
+]
+
+// City picked in the hero search; also prefills the city at checkout
+const selectedCity = computed({
+    get: () => cartStore.selectedCity,
+    set: (city: string) => { cartStore.selectedCity = city }
+})
+
+watch(cities, (list) => {
+    const first = list[0]
+    if (first && !list.includes(cartStore.selectedCity)) cartStore.selectedCity = first
+}, { immediate: true })
+
+// City dropdown (same list and look as the header's): closes on pick, outside click or Escape
+const isCityOpen = ref(false)
+const cityDropdownRef = ref<HTMLElement | null>(null)
+
+const chooseCity = (city: string) => {
+    selectedCity.value = city
+    isCityOpen.value = false
+}
+
+const onDocumentClick = (e: MouseEvent) => {
+    if (isCityOpen.value && !cityDropdownRef.value?.contains(e.target as Node)) isCityOpen.value = false
+}
+
+const onKeydown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') isCityOpen.value = false
+}
+
+onMounted(() => {
+    document.addEventListener('click', onDocumentClick)
+    document.addEventListener('keydown', onKeydown)
+})
+
+onUnmounted(() => {
+    document.removeEventListener('click', onDocumentClick)
+    document.removeEventListener('keydown', onKeydown)
+})
+
+interface PopularCategory {
+    id: number | string
+    name: string
+    is_featured?: boolean
+}
+
+// "Popular" chips: featured categories from GET /api/service-categories
+const popularCategories = ref<PopularCategory[]>([])
+
+onMounted(async () => {
+    try {
+        const list: any = await service.getCategories()
+        const all: PopularCategory[] = Array.isArray(list) ? list : (list?.data || [])
+        const featured = all.filter(c => c.is_featured)
+        popularCategories.value = (featured.length ? featured : all).slice(0, 4)
+    } catch {
+        popularCategories.value = []
     }
+})
+
+const openCategory = (cat: PopularCategory) => {
+    router.push(`/services/category/${cat.id}`)
+}
+
+const heroFeatures = [
+    { key: 'vetted', title: '100% Vetted Techs', text: 'Fully trained in-house team' },
+    { key: 'rated', title: 'Top-Tier Rated', text: '10k+ satisfied customers' },
+    { key: 'pricing', title: 'Clear Pricing', text: 'No hidden surprises' }
 ]
 
 const showCallModal = ref(false)
@@ -40,17 +115,18 @@ const clearFieldErrors = () => {
     callErrorMsg.value = ''
 }
 
+// Same support line as the header call icon
+const SUPPORT_PHONE = '042111111242'
+
+// Browsing services is public; login is only asked for at checkout
 const handleBookNow = () => {
-    if (authStore.isAuthenticated) {
-        router.push('/services')
-    } else {
-        cartStore.openAuthModal()
-    }
+    router.push('/services')
 }
 
 const openCallModal = () => {
-    if (!authStore.isAuthenticated) {
-        cartStore.openAuthModal()
+    // On phones, dial straight away instead of showing the callback form
+    if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) {
+        window.location.href = `tel:${SUPPORT_PHONE}`
         return
     }
 
@@ -80,12 +156,6 @@ const handleSearch = () => {
 }
 
 const handleCallSubmit = async () => {
-    if (!authStore.isAuthenticated) {
-        closeCallModal()
-        cartStore.openAuthModal()
-        return
-    }
-
     clearFieldErrors()
 
     let hasError = false
@@ -219,17 +289,65 @@ const handleCallSubmit = async () => {
 
             <div class="hero-content">
 
+                <span class="hero-eyebrow">Trusted home services</span>
+
                 <h1 class="hero-title">
-                    Home<br />
-                    Maintenance<br />
-                    Made Easy!!
+                    Home Maintenance<br />
+                    <span class="hero-title-accent">Made Easy!!</span>
                 </h1>
 
                 <p class="hero-description">
-                    <!-- Connecting customers and technicians for quick, safe, and -->
-                    Connecting customers for quick, safe, and<br class="desktop-br" />
+                    Connecting customers for quick, safe, and
                     affordable home service bookings.
                 </p>
+
+                <!-- Search: city + query + button -->
+                <div ref="cityDropdownRef" class="hero-search-wrap">
+                <form class="hero-search" role="search" @submit.prevent="handleSearch">
+                    <button type="button" class="hero-search-city" :class="{ open: isCityOpen }"
+                        aria-label="Select City" :aria-expanded="isCityOpen" @click="isCityOpen = !isCityOpen">
+                        <svg class="city-pin" viewBox="0 0 24 24" width="18" height="18" fill="none"
+                            stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                            <circle cx="12" cy="10" r="3" />
+                        </svg>
+                        <span class="city-name">{{ selectedCity || 'Select City' }}</span>
+                        <svg class="city-chevron" :class="{ rotate: isCityOpen }" width="14" height="14"
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+
+                    <input v-model="searchQuery" type="search" placeholder="Search services..."
+                        class="hero-search-input" aria-label="Search services" />
+
+                    <button type="submit" class="hero-search-btn" aria-label="Search">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                            stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                    </button>
+                </form>
+
+                <transition name="dropdown">
+                    <div v-if="isCityOpen" class="city-menu">
+                        <div v-for="city in cities" :key="city" class="city-option"
+                            :class="{ selected: selectedCity === city }" @click="chooseCity(city)">
+                            {{ city }}
+                        </div>
+                    </div>
+                </transition>
+                </div>
+
+                <div v-if="popularCategories.length" class="hero-popular">
+                    <span class="popular-label">Popular:</span>
+                    <button v-for="cat in popularCategories" :key="cat.id" type="button" class="popular-chip"
+                        @click="openCategory(cat)">
+                        {{ cat.name }}
+                    </button>
+                </div>
 
                 <div class="hero-actions">
 
@@ -247,27 +365,40 @@ const handleCallSubmit = async () => {
 
                 </div>
 
-                <div class="search-box">
+                <div class="hero-divider"></div>
 
-                    <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
-                        stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="11" cy="11" r="8"></circle>
-
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                    </svg>
-
-                    <input v-model="searchQuery" type="text" placeholder="search" class="search-input"
-                        @keyup.enter="handleSearch" />
-
+                <div class="hero-features">
+                    <div v-for="f in heroFeatures" :key="f.key" class="feature-card">
+                        <span class="feature-icon" :class="f.key">
+                            <svg v-if="f.key === 'vetted'" viewBox="0 0 24 24" width="20" height="20" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                <polyline points="9 12 11 14 15 10" />
+                            </svg>
+                            <svg v-else-if="f.key === 'rated'" viewBox="0 0 24 24" width="20" height="20" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polygon
+                                    points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                            </svg>
+                            <svg v-else viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="6" width="20" height="12" rx="2" />
+                                <circle cx="12" cy="12" r="2.5" />
+                                <path d="M6 12h.01M18 12h.01" />
+                            </svg>
+                        </span>
+                        <h3 class="feature-title">{{ f.title }}</h3>
+                        <p class="feature-text">{{ f.text }}</p>
+                    </div>
                 </div>
 
             </div>
 
             <div class="hero-visual">
 
-                <div class="clipped-image-container">
+                <div class="slider-frame">
 
-                    <HeroSlider :slides="heroSlides" :auto-play="true" :interval="4000" />
+                    <HeroSlider :slides="heroSlides" :auto-play="true" :interval="4500" />
 
                 </div>
 
@@ -314,7 +445,7 @@ const handleCallSubmit = async () => {
 
                         <div class="form-group-field">
 
-                            <input v-model="callPhone" type="tel" placeholder="Mobile Number" class="call-input-pill"
+                            <PhoneInput v-model="callPhone" placeholder="Mobile Number" class="call-input-pill"
                                 :class="{
                                     'has-error': fieldErrors.phone
                                 }" @input="fieldErrors.phone = ''" />
@@ -356,239 +487,388 @@ const handleCallSubmit = async () => {
 }
 
 .hero-card {
-    background: #F4F6F8;
+    background:
+        radial-gradient(circle at 0% 0%, rgba(26, 86, 219, 0.08), transparent 45%),
+        #F4F6F8;
     border-radius: 24px;
-
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    gap: 40px;
     align-items: stretch;
-    justify-content: space-between;
-
-    min-height: 480px;
-
-    overflow: hidden;
+    padding: 40px;
     position: relative;
-
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
 }
 
 .hero-content {
-    flex: 1;
-
-    padding: 56px 48px;
-
     display: flex;
     flex-direction: column;
     justify-content: center;
+    min-width: 0;
+}
 
-    max-width: 560px;
-
-    z-index: 2;
+.hero-eyebrow {
+    align-self: flex-start;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: #1A56DB;
+    background: #E0EAFF;
+    padding: 6px 12px;
+    border-radius: 999px;
+    margin-bottom: 16px;
 }
 
 .hero-title {
-    font-size: 52px;
+    font-size: 46px;
     font-weight: 900;
-
-    color: #0F52BA;
-
+    color: #0F172A;
     line-height: 1.12;
-
-    margin-bottom: 20px;
-
+    margin: 0 0 14px;
     letter-spacing: -0.8px;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
 
-    font-family:
-        system-ui,
-        -apple-system,
-        BlinkMacSystemFont,
-        'Segoe UI',
-        Roboto,
-        sans-serif;
+.hero-title-accent {
+    color: #0F52BA;
+    font-weight: 900;
 }
 
 .hero-description {
     font-size: 15px;
-
     color: #4B5563;
-
     line-height: 1.55;
-
-    margin-bottom: 28px;
-
+    margin: 0 0 24px;
     font-weight: 500;
+}
+
+/* Search bar: city | input | button */
+.hero-search {
+    display: flex;
+    align-items: stretch;
+    background: #FFFFFF;
+    border: 1.5px solid #D6E0F5;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 6px 18px rgba(26, 86, 219, 0.08);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.hero-search:focus-within {
+    border-color: #1A56DB;
+    box-shadow: 0 6px 20px rgba(26, 86, 219, 0.16);
+}
+
+.hero-search-wrap {
+    position: relative;
+}
+
+.hero-search-city {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px 0 16px;
+    background: #F1F5FF;
+    border: none;
+    border-right: 1px solid #D6E0F5;
+    flex-shrink: 0;
+    cursor: pointer;
+    font-family: inherit;
+    outline: none;
+    transition: background 0.2s ease;
+}
+
+.hero-search-city:hover,
+.hero-search-city.open {
+    background: #E0EAFF;
+}
+
+.city-pin {
+    color: #1A56DB;
+    flex-shrink: 0;
+}
+
+.city-name {
+    color: #0F172A;
+    font-size: 15px;
+    font-weight: 700;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.city-chevron {
+    color: #0D52CD;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+.city-chevron.rotate {
+    transform: rotate(180deg);
+}
+
+/* Same look as the header city menu */
+.city-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    background: #ffffff;
+    border-radius: 12px;
+    border: 1px solid #E2E8F0;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    min-width: 150px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 8px 0;
+    z-index: 50;
+}
+
+.city-option {
+    padding: 10px 20px;
+    color: #475569;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.city-option:hover {
+    background: #F8FAFC;
+    color: #0D52CD;
+}
+
+.city-option.selected {
+    color: #0D52CD;
+    font-weight: 700;
+}
+
+.dropdown-enter-active,
+.dropdown-leave-active {
+    transition: all 0.2s ease;
+}
+
+.dropdown-enter-from,
+.dropdown-leave-to {
+    opacity: 0;
+    transform: translateY(-8px);
+}
+
+.hero-search-input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    padding: 16px;
+    font-size: 15px;
+    color: #1F2937;
+    background: transparent;
+    font-family: inherit;
+}
+
+.hero-search-input::placeholder {
+    color: #94A3B8;
+}
+
+.hero-search-input:focus::placeholder {
+    color: transparent;
+}
+
+.hero-search-btn {
+    flex-shrink: 0;
+    width: 60px;
+    border: none;
+    background: #1A56DB;
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.hero-search-btn:hover {
+    background: #1D4ED8;
+}
+
+/* Popular chips */
+.hero-popular {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.popular-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #64748B;
+    margin-right: 2px;
+}
+
+.popular-chip {
+    padding: 7px 14px;
+    border-radius: 10px;
+    border: 1px solid #D6E0F5;
+    background: #FFFFFF;
+    color: #1E293B;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.popular-chip:hover {
+    border-color: #1A56DB;
+    color: #1A56DB;
+    background: #F1F5FF;
 }
 
 .hero-actions {
     display: flex;
     align-items: center;
-
-    gap: 16px;
-
-    margin-bottom: 32px;
+    gap: 12px;
+    margin-top: 22px;
 }
 
 .btn-book-now {
     background: #1A56DB;
-
     color: #ffffff;
-
     border: none;
-
     padding: 12px 32px;
-
     border-radius: 10px;
-
     font-size: 15px;
-
     font-weight: 700;
-
     cursor: pointer;
-
     transition: all 0.2s ease;
-
-    box-shadow:
-        0 4px 12px rgba(26, 86, 219, 0.25);
+    box-shadow: 0 4px 12px rgba(26, 86, 219, 0.25);
 }
 
 .btn-book-now:hover {
     background: #1D4ED8;
-
     transform: translateY(-1px);
-
-    box-shadow:
-        0 6px 16px rgba(26, 86, 219, 0.35);
+    box-shadow: 0 6px 16px rgba(26, 86, 219, 0.35);
 }
 
 .btn-call-icon {
     width: 44px;
     height: 44px;
-
     border-radius: 10px;
-
-    background: #1A56DB;
-
-    color: #ffffff;
-
+    background: #FFFFFF;
+    color: #1A56DB;
+    border: 1.5px solid #1A56DB;
     display: flex;
     align-items: center;
     justify-content: center;
-
-    border: none;
-
     cursor: pointer;
-
     transition: all 0.2s ease;
-
-    box-shadow:
-        0 4px 12px rgba(26, 86, 219, 0.25);
 }
 
-.btn-call-icon:hover {
-    background: #1D4ED8;
-
-    transform: translateY(-1px);
+/* Tapping triggers :hover on phones; keep the icon white on the blue background */
+.btn-call-icon:hover,
+.btn-call-icon:active,
+.btn-call-icon:focus-visible {
+    background: #1A56DB;
+    color: #FFFFFF;
 }
 
-.search-box {
-    display: flex;
-    align-items: center;
-
-    background: #ffffff;
-
-    border: 1.5px solid #1A56DB;
-
-    border-radius: 30px;
-
-    padding: 12px 20px;
-
-    max-width: 460px;
-
-    box-shadow:
-        0 2px 8px rgba(26, 86, 219, 0.06);
-
-    transition:
-        border-color 0.2s,
-        box-shadow 0.2s;
+.hero-divider {
+    height: 1px;
+    background: #E2E8F0;
+    margin: 26px 0 22px;
 }
 
-.search-box:focus-within {
-    box-shadow:
-        0 4px 14px rgba(26, 86, 219, 0.15);
+/* Feature cards */
+.hero-features {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
 }
 
-.search-icon {
-    color: #6B7280;
-
-    margin-right: 12px;
-
-    flex-shrink: 0;
-}
-
-.search-input {
-    border: none;
-
-    outline: none;
-
-    width: 100%;
-
-    font-size: 15px;
-
-    color: #1F2937;
-
-    background: transparent;
-}
-
-.search-input::placeholder {
-    color: #6B7280;
-
-    font-size: 15px;
-}
-
-.hero-visual {
-    flex: 1.1;
-
-    position: relative;
-
-    display: flex;
-
-    align-items: stretch;
-
-    justify-content: flex-end;
-
+.feature-card {
+    background: #FFFFFF;
+    border: 1px solid #E5EAF3;
+    border-radius: 16px;
+    padding: 16px;
     min-width: 0;
 }
 
-.clipped-image-container {
-    width: 100%;
-    height: 100%;
+.feature-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+    color: #1A56DB;
+    background: #E0EAFF;
+}
 
-    min-height: 480px;
+.feature-icon.rated {
+    color: #D97706;
+    background: #FEF3C7;
+}
 
+.feature-icon.pricing {
+    color: #059669;
+    background: #D1FAE5;
+}
+
+.feature-title {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    color: #0F172A;
+    margin: 0 0 4px;
+}
+
+.feature-text {
+    font-size: 12.5px;
+    color: #64748B;
+    margin: 0;
+    line-height: 1.4;
+}
+
+/* Slider */
+.hero-visual {
     position: relative;
+    min-width: 0;
+    display: flex;
+}
 
+.slider-frame {
+    width: 100%;
+    min-height: 460px;
+    border-radius: 22px;
     overflow: hidden;
-
-    /*
-     * Main curved shape
-     */
-    clip-path: ellipse(105% 72% at 100% 50%);
-
-    -webkit-clip-path: ellipse(105% 72% at 100% 50%);
+    position: relative;
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14);
 }
 
-.clipped-image-container :deep(.hero-slider) {
-    width: 100%;
+/* The frame sets the height; slides fill it and the images cover it */
+.slider-frame :deep(.hero-slider) {
+    position: absolute;
+    inset: 0;
+}
+
+.slider-frame :deep(.slider-container),
+.slider-frame :deep(.slides-track),
+.slider-frame :deep(.slide) {
     height: 100%;
+    min-height: 0;
 }
 
-.clipped-image-container :deep(.slider-container) {
-    width: 100%;
+.slider-frame :deep(.slide-image) {
+    position: absolute;
+    inset: 0;
     height: 100%;
-    min-height: 480px;
-}
-
-.clipped-image-container :deep(.slide-image) {
-    min-height: 480px;
+    min-height: 0;
+    object-position: center;
 }
 
 .call-modal-overlay {
@@ -814,6 +1094,33 @@ const handleCallSubmit = async () => {
     opacity: 0;
 }
 
+@media (max-width: 1024px) {
+    .hero-card {
+        padding: 28px;
+        gap: 28px;
+    }
+
+    .hero-title {
+        font-size: 38px;
+    }
+}
+
+@media (max-width: 860px) {
+    .hero-card {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    /* Slider first on tablets and phones */
+    .hero-visual {
+        order: -1;
+    }
+
+    .slider-frame {
+        min-height: 0;
+        height: 360px;
+    }
+}
+
 @media (max-width: 768px) {
     .hero-wrapper {
         margin: 10px auto 20px;
@@ -821,80 +1128,93 @@ const handleCallSubmit = async () => {
     }
 
     .hero-card {
-        flex-direction: column-reverse;
+        padding: 0;
+        gap: 18px;
         background: transparent;
         box-shadow: none;
-        min-height: auto;
+        border-radius: 0;
     }
 
-    .hero-visual {
-        width: 100%;
-        margin-bottom: 20px;
-    }
-
-    .clipped-image-container {
-        clip-path: none !important;
-        -webkit-clip-path: none !important;
+    .slider-frame {
         border-radius: 20px;
-        min-height: 260px;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
     }
 
-    .clipped-image-container :deep(.slider-container),
-    .clipped-image-container :deep(.slide-image) {
-        min-height: 260px;
-        border-radius: 20px;
+    .slider-frame {
+        height: 240px;
     }
 
-    .hero-content {
-        width: 100%;
-        max-width: 100%;
-        padding: 0;
-        align-items: center;
-        text-align: center;
-    }
-
+    .hero-eyebrow,
     .hero-title,
     .hero-description {
         display: none;
     }
 
+    .hero-search {
+        border-radius: 14px;
+    }
+
+    .hero-search-city {
+        padding: 0 8px 0 12px;
+    }
+
+    .city-name {
+        max-width: 80px;
+        font-size: 14px;
+    }
+
+    /* 16px stops iOS from zooming into the field */
+    .hero-search-input {
+        padding: 14px 12px;
+        font-size: 16px;
+    }
+
+    .hero-search-btn {
+        width: 52px;
+    }
+
+    .hero-popular {
+        margin-top: 12px;
+    }
+
     .hero-actions {
-        width: 100%;
         justify-content: center;
-        gap: 12px;
-        margin-bottom: 20px;
+        margin-top: 18px;
     }
 
-    .btn-book-now {
-        background: #1A56DB;
-        color: #ffffff;
-        border-radius: 8px;
-        padding: 12px 32px;
-        font-size: 15px;
-        font-weight: 700;
-        border: none;
-        flex: initial;
+    .hero-divider {
+        margin: 20px 0 16px;
     }
 
-    .btn-call-icon {
-        background: #ffffff;
-        color: #1A56DB;
-        border: 1.5px solid #1A56DB;
-        border-radius: 8px;
-        width: 48px;
-        height: 44px;
-        box-shadow: none;
+    .hero-features {
+        gap: 8px;
     }
 
-    .search-box {
-        width: 100%;
-        max-width: 100%;
-        background: #ffffff;
-        border: 1.5px solid #1A56DB;
-        border-radius: 12px;
-        padding: 12px 18px;
-        box-shadow: 0 2px 8px rgba(26, 86, 219, 0.06);
+    .feature-card {
+        padding: 12px 10px;
+        border-radius: 14px;
+        text-align: center;
+    }
+
+    .feature-icon {
+        width: 34px;
+        height: 34px;
+        margin: 0 auto 8px;
+    }
+
+    .feature-title {
+        font-size: 11px;
+        letter-spacing: 0.1px;
+    }
+
+    .feature-text {
+        font-size: 11px;
+    }
+}
+
+@media (max-width: 420px) {
+    .feature-text {
+        display: none;
     }
 }
 </style>

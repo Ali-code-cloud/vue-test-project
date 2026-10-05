@@ -10,8 +10,7 @@
         <div class="user-info">
           <h2>Welcome back, {{ authStore.user?.name || 'Valued Customer' }}!</h2>
           <p class="user-email">
-            <span>📧 {{ authStore.user?.email }}</span> •
-            <span>📱 {{ authStore.user?.phone || '+92 300 1234567' }}</span> •
+            <span v-if="authStore.user?.phone">📱 {{ formatPhone(authStore.user.phone) }}</span> •
             <span class="member-tag">Member since {{ authStore.user?.joinedDate || '2026' }}</span>
           </p>
         </div>
@@ -280,16 +279,12 @@
                 <input type="text" v-model="profileForm.name" class="input-field" />
               </div>
               <div class="form-group">
-                <label>Email Address</label>
-                <input type="email" v-model="profileForm.email" class="input-field" />
+                <label>Phone Number</label>
+                <PhoneInput v-model="profileForm.phone" class="input-field" />
               </div>
             </div>
 
             <div class="form-row">
-              <div class="form-group">
-                <label>Phone Number</label>
-                <input type="tel" v-model="profileForm.phone" class="input-field" />
-              </div>
               <div class="form-group">
                 <label>Default City</label>
                 <select v-model="profileForm.city" class="input-field">
@@ -460,9 +455,8 @@
                   <span v-if="complaintFormErrors.name" class="text-danger-error">{{ complaintFormErrors.name }}</span>
                 </div>
                 <div class="form-group-half">
-                  <input 
-                    v-model="complaintForm.phone" 
-                    type="tel" 
+                  <PhoneInput
+                    v-model="complaintForm.phone"
                     placeholder="Phone number *" 
                     class="form-input-pill" 
                     :class="{ 'has-error': complaintFormErrors.phone }"
@@ -500,7 +494,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useAuthStore, getApiError } from '@/stores/auth'
+import { useAuthStore, getApiError, formatPhone } from '@/stores/auth'
+import PhoneInput from '@/components/PhoneInput.vue'
 import { useCartStore } from '@/stores/cart'
 import api from '@/composables/useApi'
 import { showSuccessAlert, showErrorAlert, showConfirmAlert, showPromptAlert, showSuccessToast, showErrorToast } from '@/utils/alert'

@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore, getApiError } from '@/stores/auth'
+import PhoneInput from '@/components/PhoneInput.vue'
 import api from '@/composables/useApi'
 import { showSuccessToast, showErrorToast } from '@/utils/alert'
 
@@ -145,9 +146,8 @@ const handleSubmit = async () => {
                         </div>
 
                         <div class="form-group">
-                            <input 
-                                v-model="form.phone" 
-                                type="tel" 
+                            <PhoneInput
+                                v-model="form.phone"
                                 placeholder="Phone number *" 
                                 class="form-input" 
                                 :class="{ 'has-error': formErrors.phone }"

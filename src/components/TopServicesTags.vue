@@ -70,9 +70,6 @@ const navigateToCategory = (cat: Category) => {
                     class="service-tag"
                     @click="navigateToCategory(cat)"
                 >
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="#EA580C" class="fire-svg">
-                        <path d="M12 23c-4.97 0-9-3.58-9-8 0-3.08 1.77-5.91 4.5-7.5.5-.29 1.1.08 1.1.65 0 1.25.56 2.45 1.5 3.25.32.27.8.1 0.88-.32C9.5 8.35 11 5.2 13 3.5c.37-.31.93-.05.93.43 0 1.93 1.05 3.69 2.7 4.57 2.65 1.41 4.37 4.15 4.37 7.18 0 4.42-4.03 8.02-9 8.02z"/>
-                    </svg>
                     <span>{{ cat.name }}</span>
                 </button>
             </div>

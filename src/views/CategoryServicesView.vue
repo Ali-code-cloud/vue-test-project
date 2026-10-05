@@ -5,7 +5,7 @@
       <!-- Blue Header Banner -->
       <div class="blue-banner">
         <div class="banner-container">
-          <h1 class="banner-title">{{ categoryName }} Services</h1>
+          <h1 class="banner-title">{{ categoryTitle }}</h1>
           <p class="banner-subtitle">
             {{ categoryDescription || 'We Service, Repair, and Install All ' + categoryName + ' Brands!' }}
           </p>
@@ -15,15 +15,15 @@
             <div class="stat-pill">
               <div class="stat-icon star-icon">★</div>
               <div class="stat-text">
-                <span class="stat-val">4.4/5</span>
+                <span class="stat-val">{{ ratingText }}</span>
                 <span class="stat-lbl">Average rating</span>
               </div>
             </div>
 
-            <div class="stat-pill">
+            <div v-if="!stats || stats.start_from_price != null" class="stat-pill">
               <div class="stat-icon bag-icon">🛍️</div>
               <div class="stat-text">
-                <span class="stat-val">800</span>
+                <span class="stat-val">{{ stats ? Math.round(Number(stats.start_from_price)) : '–' }}</span>
                 <span class="stat-lbl">Start from</span>
               </div>
             </div>
@@ -31,7 +31,7 @@
             <div class="stat-pill">
               <div class="stat-icon check-icon">✓</div>
               <div class="stat-text">
-                <span class="stat-val">55754</span>
+                <span class="stat-val">{{ stats ? stats.done_orders : '–' }}</span>
                 <span class="stat-lbl">Done order</span>
               </div>
             </div>
@@ -71,18 +71,21 @@
         <!-- 3. Category Services Grey Window Box -->
         <div class="services-window-box">
           <div class="window-header">
-            <h2 class="window-title">{{ categoryName }} Services</h2>
+            <h2 class="window-title">
+              {{ activeSearch ? `Results for "${activeSearch}"` : categoryTitle }}
+            </h2>
           </div>
 
           <!-- Loading State -->
-          <div v-if="isLoading" class="loading-state">
+          <div v-if="isLoading || isSearching" class="loading-state">
             <div class="spinner"></div>
-            <p>Loading services from API...</p>
+            <p>{{ isSearching ? 'Searching...' : 'Loading services from API...' }}</p>
           </div>
 
           <!-- Empty State -->
           <div v-else-if="filteredServices.length === 0" class="empty-state">
-            <p>No services found for "{{ searchQuery }}".</p>
+            <p v-if="activeSearch">No services found for "{{ activeSearch }}".</p>
+            <p v-else>No services available in this category yet.</p>
           </div>
 
           <!-- Services Cards Grid -->
@@ -94,33 +97,35 @@
               :class="{ 'in-cart-active': cartStore.getServiceQuantity(service.id) > 0 }"
             >
               <div class="card-thumb">
-                <img :src="getImageUrl(service.image)" :alt="service.name" class="thumb-img" />
+                <img :src="getImageUrl(service.image)" :alt="service.name" class="thumb-img" loading="lazy" />
+                <span v-if="discountPercent(service)" class="discount-badge">{{ discountPercent(service) }}% OFF</span>
               </div>
 
               <div class="card-info">
                 <h3 class="service-title">{{ service.name }}</h3>
-                <p class="service-unit">{{ service.short_description || service.unit || '- Per Unit' }}</p>
-
-                <div class="price-row">
-                  <span v-if="service.original_price" class="original-price">
-                    Rs:{{ Math.round(Number(service.original_price)) }}
-                  </span>
-                  <span class="discounted-price">
-                    Rs:{{ Math.round(Number(service.discounted_price)) }}
-                  </span>
-                </div>
+                <span class="rating-tag">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+                  {{ ratingLabel(service) }}
+                </span>
+                <p class="service-unit">{{ service.short_description || service.description || service.unit || 'Professional service tailored to your needs.' }}</p>
 
                 <div class="card-bottom">
-                  <span class="rating-tag">★ {{ service.rating || '4.4' }}</span>
+                  <div class="price-block">
+                    <span class="price-label">Starting from</span>
+                    <div class="price-row">
+                      <span class="discounted-price">PKR {{ formatPrice(service.discounted_price ?? service.original_price) }}</span>
+                      <span v-if="hasDiscount(service)" class="original-price">{{ formatPrice(service.original_price) }}</span>
+                    </div>
+                  </div>
 
-                  <!-- Add Button vs Quantity Stepper -->
+                  <!-- Book Now (adds to cart) vs Quantity Stepper -->
                   <div class="cart-action-wrap">
                     <button 
                       v-if="cartStore.getServiceQuantity(service.id) === 0" 
                       class="btn-add-cart" 
                       @click="cartStore.addToCart(service)"
                     >
-                      Add <span class="plus-icon">+</span>
+                      Book Now
                     </button>
 
                     <div v-else class="stepper-box animated-stepper">
@@ -132,12 +137,27 @@
                 </div>
               </div>
             </div>
+
+            <!-- Last card: more services coming -->
+            <div v-if="!activeSearch" class="coming-soon-card">
+              <span class="coming-icon">
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              </span>
+              <h3 class="coming-title">More Services Coming Soon!</h3>
+              <p class="coming-text">
+                We are constantly adding new professional services to our catalog. Need something custom? Let us know!
+              </p>
+              <router-link to="/contact" class="btn-callback">Request a Callback</router-link>
+            </div>
           </div>
         </div>
 
         <!-- Informational / SEO Text Section -->
         <div class="seo-text-section">
-          <h2 class="seo-main-heading">Best {{ categoryName }} Services in Pakistan</h2>
+          <h2 class="seo-main-heading">Best {{ categoryTitle }} in Pakistan</h2>
 
           <p class="seo-paragraph">
             Regardless of whether it's home or office, <strong>{{ categoryName }} units</strong> are an indispensable
@@ -198,7 +218,7 @@
       <div class="checkout-card-wrapper">
         <!-- Top Back Navigation -->
         <button class="btn-back-to-services" @click="currentViewMode = 'services_list'">
-          ← Back to {{ categoryName }} Services
+          ← Back to {{ categoryTitle }}
         </button>
 
         <div class="checkout-grid">
@@ -399,6 +419,20 @@ interface ServiceCategory {
   image?: string | null
 }
 
+// Service card helpers
+const formatPrice = (value: string | number | null | undefined) => Math.round(Number(value || 0)).toLocaleString('en-PK')
+
+const hasDiscount = (s: ServiceItem) => Number(s.original_price) > Number(s.discounted_price)
+
+const discountPercent = (s: ServiceItem) =>
+  hasDiscount(s) ? Math.round((1 - Number(s.discounted_price) / Number(s.original_price)) * 100) : 0
+
+// 'New' until the service has reviews (the API sends rating 0.0 then)
+const ratingLabel = (s: ServiceItem) => {
+  const rating = Number(s.rating)
+  return rating > 0 && s.review_count !== 0 ? rating.toFixed(1) : 'New'
+}
+
 function getImageUrl(imagePath?: string | null): string {
   if (!imagePath) return 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=400&auto=format&fit=crop&q=80'
   if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) return imagePath
@@ -407,6 +441,10 @@ function getImageUrl(imagePath?: string | null): string {
 
 const selectedCategoryId = ref<number>(4)
 const categoryName = ref('Services')
+// Category names usually already end in "Services" ("AC Services"), so don't add it twice
+const categoryTitle = computed(() =>
+  /\bservices?$/i.test(categoryName.value.trim()) ? categoryName.value : `${categoryName.value} Services`
+)
 const categoryDescription = ref('Browse our top categories and services')
 
 const allCategories = ref<ServiceCategory[]>([])
@@ -481,16 +519,87 @@ const timeSlots = [
   '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM', '02:00 PM'
 ]
 
-const filteredServices = computed(() => {
-  if (!searchQuery.value.trim()) return services.value
-  const q = searchQuery.value.toLowerCase()
-  return services.value.filter(s =>
-    s.name.toLowerCase().includes(q) ||
-    (s.short_description && s.short_description.toLowerCase().includes(q))
-  )
+// Search runs across all categories via GET /api/search and is kept in ?search= so
+// the home page search box and shared links land on the same results
+const activeSearch = computed(() => String(route.query.search || '').trim())
+const searchResults = ref<ServiceItem[]>([])
+const isSearching = ref(false)
+let searchRun = 0
+
+const runSearch = async (q: string) => {
+  const run = ++searchRun
+  if (!q) {
+    searchResults.value = []
+    isSearching.value = false
+    return
+  }
+  isSearching.value = true
+  try {
+    const data: any = await service.searchServices(q)
+    const found: ServiceItem[] = Array.isArray(data?.services) ? [...data.services] : []
+    // A category-name match (e.g. "plumber") also brings in that category's services
+    const matchedCategories: any[] = Array.isArray(data?.categories) ? data.categories : []
+    const categoryServices = await Promise.all(
+      matchedCategories.map((c) => service.getCategoryServices(c.id).catch(() => []))
+    )
+    for (const list of categoryServices) {
+      if (!Array.isArray(list)) continue
+      for (const s of list as ServiceItem[]) {
+        if (!found.some(f => f.id === s.id)) found.push(s)
+      }
+    }
+    if (run === searchRun) searchResults.value = found
+  } catch (error) {
+    console.error('Error searching services:', error)
+    if (run === searchRun) searchResults.value = []
+  } finally {
+    if (run === searchRun) isSearching.value = false
+  }
+}
+
+const filteredServices = computed(() => (activeSearch.value ? searchResults.value : services.value))
+
+// Typing updates the URL after a short pause; the URL drives the search
+let searchDebounce: ReturnType<typeof setTimeout> | undefined
+watch(searchQuery, (value) => {
+  clearTimeout(searchDebounce)
+  searchDebounce = setTimeout(() => {
+    const q = value.trim()
+    if (q === activeSearch.value) return
+    router.replace({ query: { ...route.query, search: q || undefined } })
+  }, 350)
 })
 
+watch(activeSearch, (q) => {
+  if (searchQuery.value.trim() !== q) searchQuery.value = q
+  runSearch(q)
+}, { immediate: true })
+
+// Banner stats from GET /api/stats ("–" while loading or if the request fails)
+interface SiteStats {
+  average_rating: number
+  max_rating: number
+  total_reviews: number
+  start_from_price: number | null
+  done_orders: number
+}
+const stats = ref<SiteStats | null>(null)
+const ratingText = computed(() => {
+  if (!stats.value) return '–'
+  if (!stats.value.total_reviews) return 'New'
+  return `${stats.value.average_rating}/${stats.value.max_rating}`
+})
+const loadStats = async () => {
+  try {
+    const data = await service.getStats()
+    if (data && typeof data === 'object') stats.value = data as SiteStats
+  } catch {
+    // keep the placeholders; the stats strip is not critical
+  }
+}
+
 onMounted(() => {
+  loadStats()
   loadCategoryData(route.params.id ? Number(route.params.id) : undefined)
 })
 
@@ -757,24 +866,29 @@ const finishOrder = () => {
 /* Services Cards Grid */
 .services-cards-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
 }
 
 .service-item-card {
   background: white;
-  border-radius: 12px;
-  border: 2px solid #E2E8F0;
-  padding: 16px;
+  border-radius: 16px;
+  border: 1.5px solid #E5EAF3;
+  overflow: hidden;
   display: flex;
-  gap: 14px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+  flex-direction: column;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+
+.service-item-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.1);
 }
 
 .service-item-card.in-cart-active {
   border-color: #1A56DB !important;
-  box-shadow: 0 4px 16px rgba(26, 86, 219, 0.15);
+  box-shadow: 0 8px 22px rgba(26, 86, 219, 0.18);
 }
 
 .btn-back-to-services {
@@ -803,56 +917,171 @@ const finishOrder = () => {
 }
 
 .card-thumb {
-  width: 80px;
-  height: 80px;
-  border-radius: 8px;
+  position: relative;
+  height: 190px;
+  background: #F4F6F8;
   overflow: hidden;
   flex-shrink: 0;
-  background: #F8FAFC;
 }
 
-.thumb-img { width: 100%; height: 100%; object-fit: cover; }
+.thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.service-item-card:hover .thumb-img {
+  transform: scale(1.04);
+}
+
+.discount-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: #1A56DB;
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  padding: 4px 9px;
+  border-radius: 999px;
+}
 
 .card-info {
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  padding: 18px 20px 20px;
 }
 
 .service-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #1A56DB;
-  line-height: 1.3;
-  margin-bottom: 4px;
-}
-
-.service-unit { font-size: 12px; color: #64748B; margin-bottom: 8px; }
-
-.price-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.original-price { font-size: 13px; color: #94A3B8; text-decoration: line-through; }
-.discounted-price { font-size: 15px; font-weight: 800; color: #0F172A; }
-
-.card-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  font-size: 17px;
+  font-weight: 800;
+  color: #0F172A;
+  line-height: 1.35;
+  margin: 0 0 6px;
 }
 
 .rating-tag {
-  font-size: 12px;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
   font-weight: 700;
-  color: #D97706;
-  background: #FEF3C7;
-  padding: 2px 8px;
-  border-radius: 10px;
+  color: #1A56DB;
+  margin-bottom: 12px;
+}
+
+.rating-tag svg {
+  color: #F59E0B;
+}
+
+.service-unit {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #64748B;
+  margin: 0 0 18px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-bottom {
+  margin-top: auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.price-block {
+  min-width: 0;
+}
+
+.price-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #94A3B8;
+  margin-bottom: 2px;
+}
+
+.price-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.discounted-price { font-size: 21px; font-weight: 900; color: #1A56DB; white-space: nowrap; }
+.original-price { font-size: 13px; color: #94A3B8; text-decoration: line-through; }
+
+/* Last card: more services coming */
+.coming-soon-card {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  padding: 40px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: #FFFFFF;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.14), transparent 55%),
+    linear-gradient(160deg, #1A56DB 0%, #0F3FA6 100%);
+  box-shadow: 0 14px 30px rgba(26, 86, 219, 0.25);
+  min-height: 360px;
+}
+
+.coming-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  margin: 24px 0 20px;
+}
+
+.coming-title {
+  font-size: 19px;
+  font-weight: 800;
+  margin: 0 0 12px;
+}
+
+.coming-text {
+  font-size: 14px;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 24px;
+  max-width: 300px;
+}
+
+.btn-callback {
+  margin-top: auto;
+  width: 100%;
+  padding: 13px 18px;
+  border-radius: 12px;
+  background: #FFFFFF;
+  color: #1A56DB;
+  font-size: 15px;
+  font-weight: 800;
+  text-decoration: none;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-callback:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.25);
 }
 
 /* Cart Action Buttons */
@@ -862,12 +1091,14 @@ const finishOrder = () => {
 }
 
 .btn-add-cart {
-  background: #0F172A;
+  background: #1A56DB;
   color: white;
   border: none;
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 13px;
+  padding: 11px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(26, 86, 219, 0.25);
   font-weight: 700;
   cursor: pointer;
   display: flex;
@@ -877,17 +1108,8 @@ const finishOrder = () => {
 }
 
 .btn-add-cart:hover {
-  background: #1E293B;
-  transform: scale(1.08);
-}
-
-.plus-icon {
-  background: white;
-  color: #0F172A;
-  border-radius: 2px;
-  padding: 0 4px;
-  font-size: 12px;
-  font-weight: bold;
+  background: #1D4ED8;
+  transform: translateY(-1px);
 }
 
 /* Stepper Box [-] [ count ] [+] */
@@ -895,7 +1117,7 @@ const finishOrder = () => {
   display: flex;
   align-items: center;
   background: #1A56DB;
-  border-radius: 6px;
+  border-radius: 10px;
   overflow: hidden;
   color: white;
   transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -914,8 +1136,8 @@ const finishOrder = () => {
   background: transparent;
   border: none;
   color: white;
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 40px;
   font-size: 16px;
   font-weight: bold;
   cursor: pointer;
@@ -1153,14 +1375,17 @@ const finishOrder = () => {
 
   .services-cards-grid { grid-template-columns: 1fr; }
 
-  .service-item-card {
-    padding: 12px;
+  .card-thumb {
+    height: 170px;
+  }
+
+  .coming-soon-card {
+    min-height: 0;
   }
 
   .floating-cart-bar {
     left: 12px;
     right: 12px;
-    bottom: 16px;
     width: calc(100% - 24px);
   }
 
@@ -1176,6 +1401,13 @@ const finishOrder = () => {
 
   .seo-main-heading {
     font-size: 18px;
+  }
+}
+
+/* Sit above the fixed bottom menu bar (64px tall, shown at 768px and below) */
+@media (max-width: 768px) {
+  .floating-cart-bar {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 }
 </style>

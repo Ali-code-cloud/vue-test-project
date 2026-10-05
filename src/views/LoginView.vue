@@ -1,20 +1,32 @@
 <template>
     <div class="auth-page-card">
+        <button type="button" class="auth-back-btn" aria-label="Go back" title="Back" @click="goBack">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M19 12H5" />
+                <path d="m12 19-7-7 7-7" />
+            </svg>
+        </button>
+
+        <router-link to="/" class="auth-logo-link">
+            <img :src="logo" alt="Mr Home Services" class="auth-logo" />
+        </router-link>
+
         <!-- Global Alerts -->
         <div v-if="globalError" class="auth-alert error-alert">{{ globalError }}</div>
         <div v-if="globalSuccess" class="auth-alert success-alert">{{ globalSuccess }}</div>
 
-        <!-- 1. WELCOME STEP (Phone or Email + Continue + Bottom Sign In button) -->
+        <!-- 1. WELCOME STEP (Phone + Continue + Bottom Sign In button) -->
         <div v-if="currentMode === 'welcome'" class="modal-body">
             <h2 class="modal-title">Welcome to mr home services</h2>
             <p class="modal-subtitle">Get started!</p>
 
             <form @submit.prevent="handleRequestOtp" class="auth-form" novalidate>
                 <div class="form-field">
-                    <input 
-                        type="text" 
-                        v-model="otpEmail" 
-                        placeholder="Phone Number or Email *" 
+                    <PhoneInput
+                        center
+                        v-model="otpEmail"
+                        placeholder="Enter Phone Number *" 
                         class="input-phone-pill" 
                         :class="{ 'has-error': otpRequestError }" 
                         @input="otpRequestError = ''" 
@@ -26,6 +38,8 @@
                     {{ isLoading ? 'Sending OTP...' : 'Continue' }}
                 </button>
             </form>
+
+            <SocialLoginButtons />
 
             <div class="bottom-signin-wrap">
                 <button type="button" @click="currentMode = 'login'" class="btn-signin-pill">
@@ -42,15 +56,14 @@
         <!-- 2. PASSWORD LOGIN STEP -->
         <div v-else-if="currentMode === 'login'" class="modal-body">
             <h2 class="modal-title">Welcome Back</h2>
-            <p class="modal-subtitle">Sign in with your registered email & password</p>
+            <p class="modal-subtitle">Sign in with your registered phone number</p>
 
             <form @submit.prevent="handleLogin" class="auth-form modal-register-form" novalidate>
                 <div class="form-field">
-                    <input 
-                        type="email" 
-                        v-model="loginForm.email" 
-                        placeholder="Email Address *" 
-                        class="input-phone-pill text-left" 
+                    <PhoneInput
+                        v-model="loginForm.email"
+                        placeholder="Phone Number *"
+                        class="input-phone-pill text-left"
                         :class="{ 'has-error': loginErrors.email }" 
                         @input="loginErrors.email = ''" 
                     />
@@ -92,7 +105,7 @@
         <div v-else-if="currentMode === 'verify'" class="modal-body">
             <h2 class="modal-title">OTP Verification</h2>
             <p class="modal-subtitle">Enter the 6-digit code sent to</p>
-            <p class="phone-display">{{ otpEmail }}</p>
+            <p class="phone-display">{{ formatPhone(otpEmail) }}</p>
 
             <form @submit.prevent="handleVerifyOtp" class="auth-form" novalidate>
                 <div class="otp-inputs-row">
@@ -133,7 +146,7 @@
         <!-- 4. COMPLETE REGISTRATION STEP -->
         <div v-else-if="currentMode === 'register'" class="modal-body">
             <h2 class="modal-title">Complete Registration</h2>
-            <p class="modal-subtitle">Enter your details for {{ otpEmail }}</p>
+            <p class="modal-subtitle">Enter your details for {{ formatPhone(otpEmail) }}</p>
 
             <form @submit.prevent="handleRegister" class="auth-form modal-register-form" novalidate>
                 <div class="form-field">
@@ -142,8 +155,8 @@
                     <span v-if="regErrors.name" class="field-error-text">{{ regErrors.name }}</span>
                 </div>
 
-                <div class="form-field">
-                    <input type="tel" v-model="regForm.phone" placeholder="Phone Number *" class="input-phone-pill text-left"
+                <div v-if="!signedUpWithPhone" class="form-field">
+                    <PhoneInput v-model="regForm.phone" placeholder="Phone Number *" class="input-phone-pill text-left"
                         :class="{ 'has-error': regErrors.phone }" @input="regErrors.phone = ''" />
                     <span v-if="regErrors.phone" class="field-error-text">{{ regErrors.phone }}</span>
                 </div>
@@ -176,21 +189,33 @@
                 <p>Visit our <router-link to="/privacy">Privacy Policy</router-link></p>
             </div>
         </div>
-
-        <div class="back-home-wrap">
-            <router-link to="/" class="back-home-link">← Back to Home</router-link>
-        </div>
     </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore, getApiError } from '@/stores/auth'
+import { useAuthStore, getApiError, isPhoneIdentifier, getPhoneError, formatPhone } from '@/stores/auth'
 import { showSuccessToast, showErrorToast } from '@/utils/alert'
+import SocialLoginButtons from '@/components/SocialLoginButtons.vue'
+import PhoneInput from '@/components/PhoneInput.vue'
+import logo from '@/assets/new-logo.png'
 
 const authStore = useAuthStore()
 const router = useRouter()
+
+// Inner steps go back to the first step; the first step leaves the page
+const goBack = () => {
+    if (currentMode.value !== 'welcome') {
+        currentMode.value = 'welcome'
+        globalError.value = ''
+        globalSuccess.value = ''
+        return
+    }
+    // history.state.back is set by vue-router when there is an in-app page to return to
+    if (window.history.state?.back) router.back()
+    else router.push('/')
+}
 
 const currentMode = ref<'welcome' | 'login' | 'verify' | 'register'>('welcome')
 const isLoading = ref(false)
@@ -205,6 +230,7 @@ const otpDigits = ref<string[]>(['', '', '', '', '', ''])
 const inputRefs = ref<any[]>([])
 const resendTimer = ref(0)
 const otpRequestError = ref('')
+const signedUpWithPhone = computed(() => isPhoneIdentifier(otpEmail.value))
 
 const regForm = ref({
     name: '',
@@ -269,8 +295,8 @@ const handleLogin = async () => {
     clearErrors()
     let isValid = true
 
-    if (!loginForm.value.email || !loginForm.value.email.trim()) {
-        loginErrors.value.email = 'Email Address is required.'
+    loginErrors.value.email = getPhoneError(loginForm.value.email)
+    if (loginErrors.value.email) {
         isValid = false
     }
     if (!loginForm.value.password || !loginForm.value.password.trim()) {
@@ -294,6 +320,7 @@ const handleLogin = async () => {
         if (e.response?.data?.errors) {
             const errs = e.response.data.errors
             if (errs.email) loginErrors.value.email = Array.isArray(errs.email) ? errs.email[0] : errs.email
+            if (errs.phone) loginErrors.value.email = Array.isArray(errs.phone) ? errs.phone[0] : errs.phone
             if (errs.password) loginErrors.value.password = Array.isArray(errs.password) ? errs.password[0] : errs.password
         }
         if (!loginErrors.value.email && !loginErrors.value.password) {
@@ -308,10 +335,8 @@ const handleLogin = async () => {
 /** 2. Request OTP */
 const handleRequestOtp = async () => {
     clearErrors()
-    if (!otpEmail.value || !otpEmail.value.trim()) {
-        otpRequestError.value = 'Phone Number or Email is required.'
-        return
-    }
+    otpRequestError.value = getPhoneError(otpEmail.value || '')
+    if (otpRequestError.value) return
 
     isLoading.value = true
     try {
@@ -323,8 +348,9 @@ const handleRequestOtp = async () => {
         startTimer()
         currentMode.value = 'verify'
     } catch (e: any) {
-        if (e.response?.data?.errors?.email) {
-            otpRequestError.value = Array.isArray(e.response.data.errors.email) ? e.response.data.errors.email[0] : e.response.data.errors.email
+        const fieldErr = e.response?.data?.errors?.phone || e.response?.data?.errors?.email
+        if (fieldErr) {
+            otpRequestError.value = Array.isArray(fieldErr) ? fieldErr[0] : fieldErr
             showErrorToast(otpRequestError.value)
         } else {
             globalError.value = getApiError(e)
@@ -352,6 +378,8 @@ const handleVerifyOtp = async () => {
             router.push('/dashboard')
         } else {
             showSuccessToast('OTP verified!')
+            // The verified phone number is the account's phone; no need to type it again
+            if (signedUpWithPhone.value) regForm.value.phone = otpEmail.value.trim()
             currentMode.value = 'register'
         }
     } catch (e: any) {
@@ -396,9 +424,10 @@ const handleRegister = async () => {
     isLoading.value = true
     try {
         const res = await authStore.register({
-            email: otpEmail.value.trim(),
+            // Send the verified identifier; email is optional for phone sign-ups
+            ...(signedUpWithPhone.value ? {} : { email: otpEmail.value.trim() }),
             name: regForm.value.name.trim(),
-            phone: regForm.value.phone.trim(),
+            phone: signedUpWithPhone.value ? otpEmail.value.trim() : regForm.value.phone.trim(),
             address: regForm.value.address.trim(),
             password: regForm.value.password,
             password_confirmation: regForm.value.password_confirmation
@@ -429,8 +458,49 @@ const handleRegister = async () => {
 
 <style scoped>
 .auth-page-card {
+    position: relative;
     width: 100%;
     text-align: center;
+}
+
+.auth-back-btn {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #E2E8F0;
+    border-radius: 50%;
+    background: #FFFFFF;
+    color: #0F172A;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+    transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.15s;
+    z-index: 1;
+}
+
+.auth-back-btn:hover {
+    background: #EFF4FF;
+    border-color: #C7D7FE;
+    color: #1A56DB;
+}
+
+.auth-back-btn:active {
+    transform: scale(0.95);
+}
+
+.auth-logo-link {
+    display: inline-block;
+    margin-bottom: 20px;
+}
+
+.auth-logo {
+    height: 64px;
+    width: auto;
+    object-fit: contain;
 }
 
 .modal-title {
@@ -498,6 +568,11 @@ const handleRegister = async () => {
 .input-phone-pill:focus {
     border-color: #000000;
     background: #ffffff;
+}
+
+/* Hide the hint as soon as the field is tapped */
+.input-phone-pill:focus::placeholder {
+    color: transparent;
 }
 
 .input-phone-pill.has-error {
@@ -665,36 +740,6 @@ const handleRegister = async () => {
 
 .modal-footer-links a:hover {
     text-decoration: underline;
-}
-
-.back-home-wrap {
-    display: flex;
-    justify-content: center;
-    margin-top: 24px;
-}
-
-.back-home-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: #EFF6FF;
-    color: #1D4ED8;
-    border: 1.5px solid #BFDBFE;
-    border-radius: 30px;
-    padding: 9px 24px;
-    font-size: 14px;
-    font-weight: 700;
-    text-decoration: none;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 8px rgba(29, 78, 216, 0.1);
-}
-
-.back-home-link:hover {
-    background: #1D4ED8;
-    color: #ffffff;
-    border-color: #1D4ED8;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(29, 78, 216, 0.25);
 }
 
 .auth-alert {

@@ -213,13 +213,17 @@ onUnmounted(() => {
 
 .slider-dots {
     position: absolute;
-    right: 26px;
-    bottom: 26px;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
 
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 9px;
+    gap: 7px;
+
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.35);
 
     z-index: 10;
 }
@@ -238,6 +242,7 @@ onUnmounted(() => {
 
     transition:
         background 0.2s ease,
+        width 0.25s ease,
         transform 0.2s ease;
 }
 
@@ -246,7 +251,9 @@ onUnmounted(() => {
 }
 
 .dot.active {
-    background: #1A56DB;
+    width: 22px;
+    border-radius: 999px;
+    background: #FFFFFF;
 }
 
 @media (max-width: 960px) {
@@ -274,8 +281,7 @@ onUnmounted(() => {
     }
 
     .slider-dots {
-        right: 18px;
-        bottom: 18px;
+        bottom: 14px;
     }
 }
 
@@ -307,14 +313,17 @@ onUnmounted(() => {
     }
 
     .slider-dots {
-        right: 14px;
-        bottom: 14px;
-        gap: 7px;
+        bottom: 10px;
+        gap: 6px;
     }
 
     .dot {
         width: 7px;
         height: 7px;
+    }
+
+    .dot.active {
+        width: 18px;
     }
 }
 </style>

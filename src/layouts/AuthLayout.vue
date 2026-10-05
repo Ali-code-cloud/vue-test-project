@@ -22,7 +22,7 @@ const headerTitle = computed(() => {
 
 const headerSub = computed(() => {
     if (route.path.includes('register')) return 'Join thousands of happy homeowners today'
-    if (route.path.includes('forgot-password')) return 'Verify your phone/email to set a new password'
+    if (route.path.includes('forgot-password')) return 'Verify your phone number to set a new password'
     return 'Sign in with OTP or password to access your dashboard'
 })
 </script>
