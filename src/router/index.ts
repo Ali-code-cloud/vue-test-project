@@ -73,6 +73,18 @@ const routes: RouteRecordRaw[] = [
       }
     ]
   },
+  {
+    path: '/checkout/:orderId',
+    component: DefaultLayout,
+    children: [
+      {
+        path: '',
+        name: 'checkout',
+        component: () => import('@views/CheckoutView.vue'),
+        props: true
+      }
+    ]
+  },
   // 404 - Not Found
   {
     path: '/:pathMatch(.*)*',

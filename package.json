@@ -17,9 +17,11 @@
   },
   "dependencies": {
     "axios": "^1.19.0",
+    "ol": "^10.11.0",
     "pinia": "^4.0.2",
     "vue": "^3.5.40",
-    "vue-router": "^5.2.0"
+    "vue-router": "^5.2.0",
+    "vue3-openlayers": "^12.2.2"
   },
   "devDependencies": {
     "@tsconfig/node24": "^24.0.4",
