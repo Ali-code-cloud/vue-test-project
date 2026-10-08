@@ -21,7 +21,7 @@
         </button>
 
         <div class="back-link-wrap">
-          <router-link to="/login" class="back-link">← Back to Sign In</router-link>
+          <router-link to="/login" class="back-link">Back to Sign In</router-link>
         </div>
       </form>
     </div>
@@ -73,7 +73,7 @@
         </div>
 
         <div class="back-link-wrap">
-          <button type="button" @click="currentStep = 1; errorMsg = ''; successMsg = ''" class="back-link-btn">← Change Number</button>
+          <button type="button" @click="currentStep = 1; errorMsg = ''; successMsg = ''" class="back-link-btn">Change Number</button>
         </div>
       </form>
     </div>

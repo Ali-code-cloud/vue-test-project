@@ -275,7 +275,7 @@ const formatDate = (dateStr?: string) => {
           </div>
 
           <button class="btn-read-more">
-            Read Article ➔
+            Read Article
           </button>
         </div>
       </article>
@@ -288,7 +288,7 @@ const formatDate = (dateStr?: string) => {
         :disabled="currentPage === 1" 
         @click="changePage(currentPage - 1)"
       >
-        ← Previous
+        Previous
       </button>
 
       <span class="page-indicator">Page {{ currentPage }} of {{ totalPages }}</span>
@@ -298,7 +298,7 @@ const formatDate = (dateStr?: string) => {
         :disabled="currentPage === totalPages" 
         @click="changePage(currentPage + 1)"
       >
-        Next →
+        Next
       </button>
     </div>
   </div>

@@ -92,7 +92,7 @@
             </form>
 
             <div class="otp-action-links">
-                <a href="#" @click.prevent="currentMode = 'welcome'" class="blue-link">← Sign in with OTP instead</a>
+                <a href="#" @click.prevent="currentMode = 'welcome'" class="blue-link">Sign in with OTP instead</a>
             </div>
 
             <div class="modal-footer-links">

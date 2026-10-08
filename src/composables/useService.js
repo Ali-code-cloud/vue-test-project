@@ -132,7 +132,7 @@ export function useService() {
     // ── Website stats ────────────────────────────────────────────────────────
     // GET /api/stats → { average_rating, max_rating, total_reviews, start_from_price, done_orders }
     // Not cached: the backend computes it fresh on every request
-    const getStats = () => api.get("/api/stats").then(unwrap);
+    const getStats = () => cachedGet("/api/stats");
 
     return {
         csrf,

@@ -1,6 +1,36 @@
 import { defineStore } from 'pinia'
 import api from '@/composables/useApi'
 import { showSuccessToast, showInfoToast, showErrorToast, showConfirmAlert } from '@/utils/alert'
+import { toIsoDate } from '@/utils/date'
+import { useAuthStore } from '@/stores/auth'
+
+/** The backend accepts 1 to 20 of each service per order */
+export const MAX_QUANTITY = 20
+
+/** Checkout failure; `fields` holds the backend's per-field messages (address, customer_phone, latitude, ...) */
+export class CheckoutError extends Error {
+  fields: Record<string, string>
+  constructor(message: string, fields: Record<string, string> = {}) {
+    super(message)
+    this.name = 'CheckoutError'
+    this.fields = fields
+  }
+}
+
+/** Builds a CheckoutError from a checkout error body: { message, errors: { field: [msg] } } */
+function checkoutErrorFrom(body: any): CheckoutError {
+  const fields: Record<string, string> = {}
+  for (const [key, value] of Object.entries(body?.errors || {})) {
+    const msg = Array.isArray(value) ? value[0] : value
+    if (msg) fields[key] = String(msg)
+  }
+  // Laravel adds "(and 1 more error)"; generic messages like "Validation failed" are replaced by the field messages
+  const generic = !body?.message || /^validation failed\.?$/i.test(body.message) || /given data was invalid/i.test(body.message)
+  const message = generic && Object.keys(fields).length
+    ? [...new Set(Object.values(fields))].join(' ')
+    : String(body?.message || 'Failed to place order. Please try again.').replace(/\s*\(and \d+ more errors?\)$/, '')
+  return new CheckoutError(message, fields)
+}
 
 export interface ServiceItem {
   id: number
@@ -59,7 +89,8 @@ function getAuthOrSessionPayload() {
 export const useCartStore = defineStore('cart', {
   state: () => ({
     itemsMap: {} as Record<number, CartEntry>,
-    selectedDateNum: 18,
+    // Booking day as YYYY-MM-DD; useBookingSlots() keeps it on a day/slot that can still be booked
+    selectedDate: '',
     selectedTimeSlot: '09:00 AM',
     // Service location (checkout): house/flat/street text + optional city and town
     selectedAddress: '',
@@ -111,7 +142,12 @@ export const useCartStore = defineStore('cart', {
     addToCart(service: ServiceItem, quantityToAdd: number = 1) {
       const existing = this.itemsMap[service.id]
       const addedQty = quantityToAdd || 1
-      const newQty = existing ? existing.quantity + addedQty : addedQty
+      const newQty = Math.min(existing ? existing.quantity + addedQty : addedQty, MAX_QUANTITY)
+
+      if (existing && existing.quantity >= MAX_QUANTITY) {
+        showInfoToast(`You can book up to ${MAX_QUANTITY} of one service per order.`)
+        return
+      }
 
       if (existing) {
         existing.quantity = newQty
@@ -131,6 +167,11 @@ export const useCartStore = defineStore('cart', {
 
       if (quantity <= 0) {
         return await this.removeFromCartApi(serviceId)
+      }
+
+      if (quantity > MAX_QUANTITY) {
+        showInfoToast(`You can book up to ${MAX_QUANTITY} of one service per order.`)
+        quantity = MAX_QUANTITY
       }
 
       existing.quantity = quantity
@@ -218,43 +259,45 @@ export const useCartStore = defineStore('cart', {
       // The address typed on the checkout page wins over the one saved on the profile
       const finalAddress = (orderData?.address || this.selectedAddress || user?.address || '').trim()
       if (!finalAddress) {
-        throw new Error('Address field is required. Please fill in your address to place an order.')
+        const msg = 'Address field is required. Please fill in your address to place an order.'
+        throw new CheckoutError(msg, { address: msg })
       }
 
       // Pre-check 3: Phone number validation
       const finalPhone = (orderData?.customer_phone || user?.phone || this.userPhoneNumber || '').trim()
       if (!finalPhone) {
-        throw new Error('Phone number is required. Please confirm your phone number before placing an order.')
+        const msg = 'Phone number is required. Please confirm your phone number before placing an order.'
+        throw new CheckoutError(msg, { customer_phone: msg })
       }
 
       // Pre-check 4: Location (live GPS or map pin) is required by the backend
       const location = this.locationPayload(orderData)
       if (!location) {
         this.locationError = LOCATION_REQUIRED
-        throw new Error(LOCATION_REQUIRED)
+        throw new CheckoutError(LOCATION_REQUIRED, { latitude: LOCATION_REQUIRED })
       }
 
       // Pre-check 5: At least one item selected
       if (this.cartItemsList.length === 0) {
-        throw new Error('Cannot place order: Please select at least one service to order.')
+        throw new CheckoutError('Cannot place order: Please select at least one service to order.')
       }
 
       const itemsArray = this.cartItemsList.map(item => ({
         service_id: Number(item.service.id),
-        quantity: Number(item.quantity)
+        quantity: Math.min(Number(item.quantity), MAX_QUANTITY)
       }))
 
+      // items[] covers one or several services (the backend ignores service_id/quantity when items is sent)
       const payload = {
         items: itemsArray,
-        service_id: itemsArray[0]?.service_id,
-        quantity: itemsArray[0]?.quantity || 1,
         customer_name: orderData?.customer_name || user?.name || 'Customer',
-        customer_email: orderData?.customer_email || user?.email || 'customer@example.com',
+        // Accounts are phone-only; send an email only when the account has one
+        customer_email: orderData?.customer_email || user?.email || null,
         customer_phone: finalPhone,
         address: finalAddress,
         city: (orderData?.city || this.selectedCity).trim() || null,
         town: (orderData?.town || this.selectedTown).trim() || null,
-        booking_date: orderData?.booking_date || `2026-09-${String(this.selectedDateNum).padStart(2, '0')}`,
+        booking_date: orderData?.booking_date || this.selectedDate || toIsoDate(new Date()),
         booking_time_slot: orderData?.booking_time_slot || this.selectedTimeSlot || '10:00 AM - 12:00 PM',
         notes: orderData?.notes || this.problemMessage || '',
         ...location
@@ -262,32 +305,37 @@ export const useCartStore = defineStore('cart', {
 
       let resData: any = null
       try {
-        const { data } = await api.post('/api/orders/checkout', payload)
+        // skipAuthRedirect: a 401 here is handled below without reloading the page (which would empty the cart)
+        const { data } = await api.post('/api/orders/checkout', payload, { skipAuthRedirect: true } as any)
         resData = data
       } catch (err: any) {
-        try {
-          const res = await fetch('http://mrhomeservices.test:8001/api/orders/checkout', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(payload)
-          })
-          resData = await res.json()
-          if (!res.ok || !resData.status) {
-            const errMsg = resData?.message || (resData?.errors ? Object.values(resData.errors).flat().join(', ') : 'Failed to place order.')
-            throw new Error(errMsg)
+        if (err?.response) {
+          // 401: token missing or expired. Sign in again; the cart stays as it is
+          if (err.response.status === 401) {
+            useAuthStore().logout()
+            this.openAuthModal()
+            throw new CheckoutError('Your session has expired. Please sign in again to place your order.')
           }
-        } catch (fallbackErr: any) {
-          if (err?.response?.data) {
-            const d = err.response.data
-            const msg = d.message || (d.errors ? Object.values(d.errors).flat().join(', ') : 'Failed to place order.')
-            throw new Error(msg)
-          }
-          throw fallbackErr
+          throw checkoutErrorFrom(err.response.data)
         }
+        // Timed out: the order may already have been saved, so it must not be sent again
+        if (err?.code === 'ECONNABORTED') {
+          throw new CheckoutError('The server took too long to answer. Please check My Orders in your dashboard before trying again.')
+        }
+        // Server not reachable at all (nothing was received): try the other local backend address once
+        const res = await fetch('http://mrhomeservices.test:8001/api/orders/checkout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        }).catch(() => {
+          throw new CheckoutError('Could not reach the server. Please check your internet connection and try again.')
+        })
+        resData = await res.json().catch(() => null)
+        if (!res.ok || !resData?.status) throw checkoutErrorFrom(resData)
       }
 
       if (resData?.status) {

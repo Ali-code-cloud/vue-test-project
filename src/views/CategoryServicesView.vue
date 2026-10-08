@@ -218,7 +218,7 @@
       <div class="checkout-card-wrapper">
         <!-- Top Back Navigation -->
         <button class="btn-back-to-services" @click="currentViewMode = 'services_list'">
-          ← Back to {{ categoryTitle }}
+          Back to {{ categoryTitle }}
         </button>
 
         <div class="checkout-grid">
@@ -227,17 +227,19 @@
             <!-- Select Date and Time -->
             <div class="checkout-section-box">
               <h3 class="checkout-section-title">
-                Select Date and Time <span class="month-label">🗓️ August, 2026</span>
+                Select Date and Time <span class="month-label">🗓️ {{ monthLabel }}</span>
               </h3>
 
               <!-- Days Selector Slider -->
               <div class="days-slider">
                 <button 
                   v-for="day in calendarDays" 
-                  :key="day.dateNum" 
-                  class="day-pill" 
-                  :class="{ active: cartStore.selectedDateNum === day.dateNum }"
-                  @click="cartStore.selectedDateNum = day.dateNum"
+                  :key="day.iso"
+                  type="button"
+                  class="day-pill"
+                  :class="{ active: cartStore.selectedDate === day.iso }"
+                  :disabled="!hasOpenSlot(day.iso)"
+                  @click="selectDate(day.iso)"
                 >
                   <span class="day-num">{{ day.dateNum }}</span>
                   <span class="day-name">{{ day.dayName }}</span>
@@ -251,6 +253,7 @@
                   :key="time" 
                   class="time-pill" 
                   :class="{ active: cartStore.selectedTimeSlot === time }"
+                  :disabled="isSlotPast(cartStore.selectedDate, time)"
                   @click="cartStore.selectedTimeSlot = time"
                 >
                   {{ time }}
@@ -366,18 +369,18 @@
 
           <button 
             v-if="currentViewMode === 'services_list'" 
-            class="btn-floating-action pulse-anim" 
+            class="btn-floating-action blink-anim" 
             @click="goToCheckout"
           >
-            Continue →
+            Continue
           </button>
 
           <button 
             v-else 
-            class="btn-floating-action pulse-anim" 
+            class="btn-floating-action blink-anim" 
             @click="placeOrder"
           >
-            Place Order →
+            Place Order
           </button>
         </div>
       </div>
@@ -388,7 +391,7 @@
       <div class="success-modal-card">
         <div class="success-icon-circle">✓</div>
         <h2>Booking Order Confirmed!</h2>
-        <p>Your Mr Home Services request has been received. Our team will visit you on August {{ cartStore.selectedDateNum }}, at {{ cartStore.selectedTimeSlot }}.</p>
+        <p>Your Mr Home Services request has been received. Our team will visit you on {{ formatBookingDate(cartStore.selectedDate) }}, at {{ cartStore.selectedTimeSlot }}.</p>
         <div class="modal-order-details">
           <p><strong>Total Amount:</strong> Rs {{ cartStore.totalCartPrice }}</p>
           <p><strong>Payment:</strong> Cash on Delivery</p>
@@ -405,6 +408,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useService } from '@/composables/useService'
 import { useCartStore, type ServiceItem } from '@/stores/cart'
 import { showPromptAlert } from '@/utils/alert'
+import { useBookingSlots, formatBookingDate } from '@/composables/useBookingSlots'
 
 const route = useRoute()
 const router = useRouter()
@@ -496,28 +500,7 @@ const selectCategory = (catId: number | string) => {
 const currentViewMode = ref<'services_list' | 'checkout'>('services_list')
 const fileInput = ref<any>(null)
 
-const calendarDays = [
-  { dateNum: 17, dayName: 'Mon' },
-  { dateNum: 18, dayName: 'Tue' },
-  { dateNum: 19, dayName: 'Wed' },
-  { dateNum: 20, dayName: 'Thu' },
-  { dateNum: 21, dayName: 'Fri' },
-  { dateNum: 22, dayName: 'Sat' },
-  { dateNum: 23, dayName: 'Sun' },
-  { dateNum: 24, dayName: 'Mon' },
-  { dateNum: 25, dayName: 'Tue' },
-  { dateNum: 26, dayName: 'Wed' },
-  { dateNum: 27, dayName: 'Thu' },
-  { dateNum: 28, dayName: 'Fri' },
-  { dateNum: 29, dayName: 'Sat' },
-  { dateNum: 30, dayName: 'Sun' },
-  { dateNum: 31, dayName: 'Mon' },
-]
-
-const timeSlots = [
-  '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM', 
-  '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM', '02:00 PM'
-]
+const { calendarDays, timeSlots, monthLabel, isSlotPast, hasOpenSlot, selectDate } = useBookingSlots()
 
 // Search runs across all categories via GET /api/search and is kept in ?search= so
 // the home page search box and shared links land on the same results
@@ -1235,15 +1218,37 @@ const finishOrder = () => {
 }
 
 /* Animations */
-.pulse-anim {
-  animation: subtlePulse 2s infinite;
+/* Blink: the label fades in and out, the bar glows, to draw attention to the order button */
+.blink-anim {
+  animation: blinkText 1.2s ease-in-out infinite;
 }
 
-@keyframes subtlePulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-  100% { transform: scale(1); }
+.blink-anim:disabled {
+  animation: none;
 }
+
+.floating-bar-inner:has(.blink-anim:not(:disabled)) {
+  animation: blinkGlow 1.2s ease-in-out infinite;
+}
+
+@keyframes blinkText {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes blinkGlow {
+  0%, 100% { box-shadow: 0 10px 30px rgba(26, 86, 219, 0.4), 0 0 0 0 rgba(59, 130, 246, 0.55); }
+  50% { box-shadow: 0 10px 30px rgba(26, 86, 219, 0.4), 0 0 0 8px rgba(59, 130, 246, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blink-anim,
+  .floating-bar-inner:has(.blink-anim) {
+    animation: none;
+  }
+}
+
+
 
 .floating-slide-enter-active,
 .floating-slide-leave-active {

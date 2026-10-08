@@ -1,5 +1,9 @@
 <template>
   <div class="contact-page">
+    <div class="contact-back">
+      <BackButton />
+    </div>
+
     <div class="contact-header">
       <span class="badge">Get In Touch</span>
       <h1>We are Here to Help You 24/7</h1>
@@ -44,28 +48,46 @@
           <div v-if="submittedMsg" class="success-banner">
             {{ submittedMsg }}
           </div>
+          <div v-if="formError" class="error-banner">{{ formError }}</div>
 
           <div class="form-group">
-            <label>Your Name</label>
-            <input type="text" v-model="form.name" placeholder="Ali Ahmed" class="input-field" />
+            <label for="contact-name">Your Name <em>*</em></label>
+            <input id="contact-name" v-model="form.name" type="text" placeholder="Ali Ahmed" maxlength="255"
+              autocomplete="name" class="input-field" :class="{ invalid: errors.name }" @input="errors.name = ''" />
+            <span v-if="errors.name" class="field-error">{{ errors.name }}</span>
           </div>
 
           <div class="form-group">
-            <label>Email Address</label>
-            <input type="email" v-model="form.email" placeholder="ali@example.com" class="input-field" />
+            <label for="contact-phone">Phone Number <em>*</em></label>
+            <PhoneInput id="contact-phone" v-model="form.phone" class="input-field" :class="{ invalid: errors.phone }"
+              @input="errors.phone = ''" />
+            <span v-if="errors.phone" class="field-error">{{ errors.phone }}</span>
           </div>
 
           <div class="form-group">
-            <label>Subject</label>
-            <input type="text" v-model="form.subject" placeholder="Inquiry about AC Service" class="input-field" />
+            <label for="contact-subject">Subject <span class="optional">(optional)</span></label>
+            <input id="contact-subject" v-model="form.subject" type="text" placeholder="Inquiry about AC Service"
+              :maxlength="SUBJECT_MAX" class="input-field" :class="{ invalid: errors.subject }" @input="errors.subject = ''" />
+            <span v-if="errors.subject" class="field-error">{{ errors.subject }}</span>
           </div>
 
           <div class="form-group">
-            <label>Message</label>
-            <textarea v-model="form.message" rows="4" placeholder="How can we assist you?" class="input-field"></textarea>
+            <label for="contact-message">Message <em>*</em></label>
+            <textarea id="contact-message" v-model="form.message" rows="4" placeholder="How can we assist you?"
+              :maxlength="messageMax" class="input-field" :class="{ invalid: errors.message }"
+              @input="errors.message = ''"></textarea>
+            <div class="field-meta">
+              <span v-if="errors.message" class="field-error">{{ errors.message }}</span>
+              <span class="char-count" :class="{ near: messageLeft < 100 }">{{ messageLeft }} characters left</span>
+            </div>
           </div>
 
-          <button type="submit" class="btn-submit">Submit Message</button>
+          <button type="submit" class="btn-submit" :disabled="isSending">
+            {{ isSending ? 'Sending...' : 'Submit Message' }}
+          </button>
+          <p v-if="!authStore.isAuthenticated" class="signin-note">
+            You'll be asked to sign in with your phone number before the message is sent.
+          </p>
         </form>
       </div>
     </div>
@@ -73,26 +95,143 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { showSuccessToast } from '@/utils/alert'
+import { ref, computed, watch } from 'vue'
+import { showSuccessToast, showErrorToast } from '@/utils/alert'
+import BackButton from '@/components/BackButton.vue'
+import PhoneInput from '@/components/PhoneInput.vue'
+import api from '@/composables/useApi'
+import { useAuthStore, getPhoneError } from '@/stores/auth'
+import { useCartStore } from '@/stores/cart'
+
+/*
+ * Sends to POST /api/complaint { name, phone, message } (the backend's only message endpoint).
+ * It needs a signed-in user: guests are asked to sign in and the message is sent right after.
+ * The backend has no subject field, so the subject is put at the start of the message.
+ */
+const NAME_MAX = 255
+const SUBJECT_MAX = 100
+const MESSAGE_LIMIT = 2000 // backend: message max 2000, including the subject line
+const MESSAGE_MIN = 10
+
+const authStore = useAuthStore()
+const cartStore = useCartStore()
 
 const form = ref({
-  name: '',
-  email: '',
+  name: authStore.user?.name || '',
+  phone: authStore.user?.phone || '',
   subject: '',
   message: ''
 })
-
+const errors = ref({ name: '', phone: '', subject: '', message: '' })
+const formError = ref('')
 const submittedMsg = ref('')
+const isSending = ref(false)
+// Waiting for the visitor to sign in before sending
+const sendAfterLogin = ref(false)
 
-const handleSubmit = () => {
-  submittedMsg.value = 'Thank you! Your message has been sent successfully. Our support team will contact you shortly.'
-  showSuccessToast('Message sent successfully!')
-  form.value = { name: '', email: '', subject: '', message: '' }
-  setTimeout(() => {
-    submittedMsg.value = ''
-  }, 4000)
+const subjectLine = computed(() => (form.value.subject.trim() ? `Subject: ${form.value.subject.trim()}\n\n` : ''))
+const messageMax = computed(() => MESSAGE_LIMIT - subjectLine.value.length)
+const messageLeft = computed(() => messageMax.value - form.value.message.length)
+
+// Fill in name and phone once the visitor signs in (fields they typed are kept)
+watch(() => authStore.user, (user) => {
+  if (!user) return
+  if (!form.value.name.trim()) form.value.name = user.name || ''
+  if (!form.value.phone) form.value.phone = user.phone || ''
+})
+
+function validate(): boolean {
+  const e = { name: '', phone: '', subject: '', message: '' }
+  const name = form.value.name.trim()
+  const message = form.value.message.trim()
+
+  if (!name) e.name = 'Please enter your name.'
+  else if (name.length < 2) e.name = 'Name must be at least 2 characters.'
+  else if (name.length > NAME_MAX) e.name = `Name may not be longer than ${NAME_MAX} characters.`
+
+  e.phone = getPhoneError(form.value.phone)
+
+  if (form.value.subject.trim().length > SUBJECT_MAX) e.subject = `Subject may not be longer than ${SUBJECT_MAX} characters.`
+
+  if (!message) e.message = 'Please write your message.'
+  else if (message.length < MESSAGE_MIN) e.message = `Message must be at least ${MESSAGE_MIN} characters.`
+  else if (subjectLine.value.length + message.length > MESSAGE_LIMIT) e.message = `Message is too long (max ${messageMax.value} characters).`
+
+  errors.value = e
+  const firstInvalid = (['name', 'phone', 'subject', 'message'] as const).find(k => e[k])
+  if (firstInvalid) {
+    document.getElementById(`contact-${firstInvalid}`)?.focus()
+    return false
+  }
+  return true
 }
+
+async function handleSubmit() {
+  formError.value = ''
+  submittedMsg.value = ''
+  if (!validate()) return
+
+  // The endpoint needs a signed-in user: sign in first, then this sends automatically
+  if (!authStore.isAuthenticated) {
+    sendAfterLogin.value = true
+    cartStore.openAuthModal()
+    return
+  }
+
+  isSending.value = true
+  try {
+    await api.post('/api/complaint', {
+      name: form.value.name.trim(),
+      phone: form.value.phone,
+      message: subjectLine.value + form.value.message.trim()
+    }, { skipAuthRedirect: true } as any)
+
+    // The endpoint's own text talks about a "complaint"; this page is a general contact form
+    submittedMsg.value = 'Thank you! Your message has been sent. Our support team will contact you shortly.'
+    showSuccessToast('Message sent successfully!')
+    form.value.subject = ''
+    form.value.message = ''
+  } catch (err: any) {
+    const res = err?.response
+    if (res?.status === 401) {
+      // Signed out or session expired: sign in again, the message is kept and sent after
+      authStore.logout()
+      sendAfterLogin.value = true
+      cartStore.openAuthModal()
+      return
+    }
+    if (res?.status === 422 && res.data?.errors) {
+      const be = res.data.errors
+      const first = (v: unknown) => (Array.isArray(v) ? String(v[0]) : v ? String(v) : '')
+      errors.value = {
+        name: first(be.name),
+        phone: first(be.phone || be.phone_number),
+        subject: '',
+        message: first(be.message)
+      }
+    }
+    formError.value = res?.data?.message || (res ? 'Could not send your message. Please try again.' : 'Could not reach the server. Please check your connection and try again.')
+    showErrorToast(formError.value)
+  } finally {
+    isSending.value = false
+  }
+}
+
+// Visitor signed in from the popup: send the message they already wrote
+watch(() => authStore.isAuthenticated, (signedIn) => {
+  if (signedIn && sendAfterLogin.value) {
+    sendAfterLogin.value = false
+    handleSubmit()
+  }
+})
+
+// Popup closed without signing in: stop waiting
+watch(() => cartStore.showAuthModal, (open) => {
+  if (!open && !authStore.isAuthenticated && sendAfterLogin.value) {
+    sendAfterLogin.value = false
+    formError.value = 'Please sign in to send your message. Your message is still here.'
+  }
+})
 </script>
 
 <style scoped>
@@ -100,6 +239,10 @@ const handleSubmit = () => {
   max-width: 1140px;
   margin: 40px auto;
   padding: 0 20px;
+}
+
+.contact-back {
+  margin-bottom: 8px;
 }
 
 .contact-header {
@@ -232,6 +375,7 @@ const handleSubmit = () => {
   padding: 12px 14px;
   border: 1px solid #CBD5E1;
   border-radius: 10px;
+  font-family: inherit;
   font-size: 15px;
   outline: none;
   transition: border-color 0.2s;
@@ -254,13 +398,109 @@ const handleSubmit = () => {
   transition: background 0.2s;
 }
 
-.btn-submit:hover {
+.btn-submit:hover:not(:disabled) {
   background: #1D4ED8;
+}
+
+.btn-submit:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.form-group label em {
+  color: #DC2626;
+  font-style: normal;
+}
+
+.form-group label .optional {
+  color: #94A3B8;
+  font-weight: 500;
+}
+
+.input-field:focus-within {
+  border-color: #1A56DB;
+  box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.1);
+}
+
+.input-field.invalid {
+  border-color: #DC2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.08);
+}
+
+.field-error {
+  color: #DC2626;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.field-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.char-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: #94A3B8;
+  white-space: nowrap;
+}
+
+.char-count.near {
+  color: #D97706;
+}
+
+.error-banner {
+  background: #FEF2F2;
+  color: #B91C1C;
+  padding: 12px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.signin-note {
+  margin: -6px 0 0;
+  font-size: 12px;
+  color: #64748B;
+  text-align: center;
+}
+
+/* Long values (e.g. the support email) must wrap instead of widening the column */
+.card-item > div:last-child {
+  min-width: 0;
+}
+
+.card-item p {
+  overflow-wrap: anywhere;
+}
+
+.icon-circle {
+  flex-shrink: 0;
 }
 
 @media (max-width: 860px) {
   .contact-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .contact-page {
+    padding: 0 16px;
+  }
+
+  .contact-header h1 {
+    font-size: 2rem;
+  }
+
+  .card-item {
+    padding: 18px;
+    gap: 14px;
+  }
+
+  .contact-form-card {
+    padding: 22px 18px;
   }
 }
 </style>

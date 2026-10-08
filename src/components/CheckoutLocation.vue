@@ -1,7 +1,7 @@
 <template>
   <div id="checkout-location" class="checkout-section-box location-card" :class="{ 'location-card-error': cartStore.locationError }">
     <div class="location-card-head">
-      <h3 class="location-card-title">Service Location <em>*</em></h3>
+      <h3 class="location-card-title"><span v-if="step" class="step-no">{{ step }}</span> Service Location <em>*</em></h3>
       <span v-if="cartStore.orderLocation?.source === 'live'" class="location-badge live">● Live GPS</span>
       <span v-else-if="cartStore.orderLocation" class="location-badge pinned">📍 Pinned on map</span>
       <span v-else class="location-badge required">Required</span>
@@ -81,6 +81,9 @@ import { useCartStore } from '@/stores/cart'
 import { useAuthStore } from '@/stores/auth'
 import { useCities } from '@/composables/useCities'
 import LocationMap from '@/components/LocationMap.vue'
+
+// Optional step number shown before the title (the cart page numbers its sections)
+defineProps<{ step?: number }>()
 
 const cartStore = useCartStore()
 const authStore = useAuthStore()
@@ -192,7 +195,10 @@ function clearLocation() {
 }
 
 .location-card-title {
-  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
   font-weight: 800;
   color: #0F172A;
   margin: 0;

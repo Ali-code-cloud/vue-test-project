@@ -133,7 +133,7 @@ const goBack = () => {
       <!-- Back Navigation Pill Button -->
       <div class="top-nav-bar">
         <button class="btn-back" @click="goBack">
-          ← Back to Blogs
+          Back to Blogs
         </button>
       </div>
 
@@ -200,7 +200,7 @@ const goBack = () => {
         <div v-if="blog.cta_widgets && blog.cta_widgets.length > 0" class="cta-section">
           <div v-for="(cta, i) in blog.cta_widgets" :key="i" class="cta-card">
             <h4>Need Help with {{ cta.make || 'this Service' }}?</h4>
-            <a :href="cta.link || '/services'" class="btn-cta">Explore {{ cta.make || 'Services' }} ➔</a>
+            <a :href="cta.link || '/services'" class="btn-cta">Explore {{ cta.make || 'Services' }}</a>
           </div>
         </div>
       </article>

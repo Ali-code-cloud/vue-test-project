@@ -144,7 +144,7 @@
         <!-- Floating Quick Contact Action Buttons -->
         <div class="floating-contact">
             <a href="https://wa.me/923000000000" target="_blank" class="float-btn whatsapp-btn" title="WhatsApp Chat">
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                     <path
                         d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.84 9.84 0 0012.04 2zm5.82 14.16c-.25.7-1.46 1.34-2.02 1.4-.52.06-1.19.14-3.86-.92-2.88-1.14-4.73-4.08-4.88-4.27-.14-.19-1.18-1.57-1.18-2.99 0-1.42.74-2.12 1.01-2.41.27-.29.6-.36.8-.36.2 0 .4 0 .58.01.19.01.44-.07.69.53.25.6.86 2.09.93 2.24.07.15.12.33.02.53-.1.2-.15.33-.3.51-.15.18-.32.4-.46.54-.15.15-.3.31-.13.6.17.29.76 1.25 1.63 2.03 1.12.99 2.07 1.3 2.36 1.44.29.14.46.12.63-.07.17-.19.74-.86.94-1.15.2-.29.4-.24.67-.14.27.1 1.72.81 2.02.96.3.15.5.22.57.34.07.12.07.72-.18 1.42z" />
                 </svg>
@@ -822,7 +822,27 @@ const handleLogoutMobile = () => {
 }
 
 .whatsapp-btn {
+    width: 54px;
+    height: 54px;
     background: #25D366;
+    box-shadow: 0 6px 16px rgba(37, 211, 102, 0.4);
+}
+
+.whatsapp-btn svg {
+    width: 30px;
+    height: 30px;
+}
+
+@media (max-width: 768px) {
+    .whatsapp-btn {
+        width: 46px;
+        height: 46px;
+    }
+
+    .whatsapp-btn svg {
+        width: 26px;
+        height: 26px;
+    }
 }
 
 .mobile-right-actions {

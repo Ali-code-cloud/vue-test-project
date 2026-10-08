@@ -1,12 +1,13 @@
 <template>
   <div class="cart-page-container">
     <div class="cart-wrapper">
-      <!-- Back Navigation Header -->
+      <!-- Page header -->
       <div class="cart-top-bar">
-        <button class="btn-back" @click="goBack">
-          ← Back to Services
-        </button>
-        <h1 class="cart-page-title">Shopping Cart & Checkout</h1>
+        <BackButton fallback="/services" label="Back to Services" />
+        <div class="cart-heading">
+          <h1 class="cart-page-title">Checkout</h1>
+          <p class="cart-page-subtitle">Pick a time, set your location and confirm your booking.</p>
+        </div>
       </div>
 
       <!-- If Cart is Empty -->
@@ -19,126 +20,135 @@
         </button>
       </div>
 
-      <!-- Cart Content Grid (Screenshot 4) -->
       <div v-else class="checkout-grid">
         <!-- Left Column -->
         <div class="checkout-left-col">
-          <!-- 1. Select Date and Time -->
+          <!-- 1. Items -->
           <div class="checkout-section-box">
             <h3 class="checkout-section-title">
-              Select Date and Time <span class="month-label">🗓️ August, 2026</span>
+              <span class="title-text"><span class="step-no">1</span> Your Services</span>
+              <span class="title-meta">{{ cartStore.totalCartCount }} {{ cartStore.totalCartCount === 1 ? 'item' : 'items' }}</span>
             </h3>
-
-            <!-- Days Selector Strip -->
-            <div class="days-slider">
-              <button v-for="day in calendarDays" :key="day.dateNum" class="day-pill"
-                :class="{ active: cartStore.selectedDateNum === day.dateNum }"
-                @click="cartStore.selectedDateNum = day.dateNum">
-                <span class="day-num">{{ day.dateNum }}</span>
-                <span class="day-name">{{ day.dayName }}</span>
-              </button>
-            </div>
-
-            <!-- Time Slots Grid -->
-            <div class="time-slots-grid">
-              <button v-for="time in timeSlots" :key="time" class="time-pill"
-                :class="{ active: cartStore.selectedTimeSlot === time }" @click="cartStore.selectedTimeSlot = time">
-                {{ time }}
-              </button>
-            </div>
-          </div>
-
-          <!-- 2. Service Location (live GPS or manual address) -->
-          <CheckoutLocation />
-
-          <!-- 3. Items Section -->
-          <div class="checkout-section-box">
-            <h3 class="checkout-section-title">Items</h3>
             <div class="checkout-items-list">
               <div v-for="item in cartStore.cartItemsList" :key="item.service.id" class="checkout-item-row">
-                <img :src="getImageUrl(item.service.image)" class="checkout-item-img" alt="Service" />
+                <img :src="getImageUrl(item.service.image)" class="checkout-item-img" alt="" />
 
                 <div class="checkout-item-details">
                   <h4>{{ item.service.name }}</h4>
                   <div class="checkout-item-price">
-                    <span v-if="item.service.original_price" class="old-price">
-                      Rs:{{ Math.round(Number(item.service.original_price)) }}
+                    <span v-if="Number(item.service.original_price) > Number(item.service.discounted_price)" class="old-price">
+                      Rs {{ Math.round(Number(item.service.original_price)) }}
                     </span>
-                    <span class="new-price">
-                      Rs:{{ Math.round(Number(item.service.discounted_price)) }}
-                    </span>
+                    <span class="new-price">Rs {{ Math.round(Number(item.service.discounted_price)) }}</span>
                   </div>
                 </div>
 
                 <!-- Stepper [- 1 +] -->
                 <div class="stepper-box">
-                  <button class="btn-step" @click="cartStore.decrementFromCart(item.service.id)">-</button>
+                  <button class="btn-step" type="button" aria-label="Decrease quantity"
+                    @click="cartStore.decrementFromCart(item.service.id)">−</button>
                   <span class="step-count">{{ item.quantity }}</span>
-                  <button class="btn-step" @click="cartStore.addToCart(item.service)">+</button>
+                  <button class="btn-step" type="button" aria-label="Increase quantity"
+                    @click="cartStore.addToCart(item.service)">+</button>
                 </div>
               </div>
             </div>
           </div>
+
+          <!-- 2. Select Date and Time -->
+          <div class="checkout-section-box">
+            <h3 class="checkout-section-title">
+              <span class="title-text"><span class="step-no">2</span> Date &amp; Time</span>
+              <span class="title-meta">{{ monthLabel }}</span>
+            </h3>
+
+            <!-- Days Selector Strip: today + the next 13 days -->
+            <div class="days-slider">
+              <button v-for="day in calendarDays" :key="day.iso" type="button" class="day-pill"
+                :class="{ active: cartStore.selectedDate === day.iso }" :disabled="!hasOpenSlot(day.iso)"
+                @click="selectDate(day.iso)">
+                <span class="day-name">{{ day.dayName }}</span>
+                <span class="day-num">{{ day.dateNum }}</span>
+              </button>
+            </div>
+
+            <!-- Time Slots Grid: slots that have passed today are disabled -->
+            <div class="time-slots-grid">
+              <button v-for="time in timeSlots" :key="time" type="button" class="time-pill"
+                :class="{ active: cartStore.selectedTimeSlot === time }"
+                :disabled="isSlotPast(cartStore.selectedDate, time)" @click="cartStore.selectedTimeSlot = time">
+                {{ time }}
+              </button>
+            </div>
+          </div>
+
+          <!-- 3. Service Location (live GPS or manual address) -->
+          <CheckoutLocation :step="3" />
+
+          <!-- 4. Problem details (optional) -->
+          <div class="checkout-section-box">
+            <h3 class="checkout-section-title">
+              <span class="title-text"><span class="step-no">4</span> Problem Details</span>
+              <span class="title-meta">Optional</span>
+            </h3>
+
+            <div class="problem-details">
+              <div class="upload-box" role="button" tabindex="0" aria-label="Add a photo of the problem"
+                @click="triggerImageUpload" @keydown.enter.prevent="triggerImageUpload">
+                <input type="file" ref="fileInput" class="hidden-file-input" @change="onFileSelected" accept="image/*" />
+                <img v-if="cartStore.uploadedPreview" :src="cartStore.uploadedPreview" class="preview-img"
+                  alt="Problem photo" />
+                <div v-else class="upload-placeholder">
+                  <span class="plus-large">+</span>
+                  <span class="upload-label">Add photo</span>
+                </div>
+              </div>
+
+              <textarea v-model="cartStore.problemMessage" rows="3" class="problem-textarea"
+                placeholder="Describe the problem, e.g. AC is not cooling and makes noise."></textarea>
+            </div>
+          </div>
         </div>
 
-        <!-- Right Column -->
+        <!-- Right Column: order summary, stays in view while scrolling -->
         <div class="checkout-right-col">
-          <!-- 1. Billing Card -->
           <div class="billing-card">
-            <h3 class="billing-title">Billing</h3>
+            <h3 class="billing-title">Order Summary</h3>
 
             <div v-for="item in cartStore.cartItemsList" :key="item.service.id" class="billing-row">
-              <span>{{ item.service.name }} (i)</span>
-              <span>Rs: {{ Math.round(Number(item.service.discounted_price)) }} X {{ item.quantity }}</span>
+              <span class="billing-item-name">{{ item.service.name }} <em>× {{ item.quantity }}</em></span>
+              <span>Rs {{ Math.round(Number(item.service.discounted_price)) * item.quantity }}</span>
             </div>
 
             <div class="billing-divider"></div>
 
             <div class="billing-row">
-              <span>Amount</span>
-              <span class="bold-text">Rs: {{ cartStore.totalCartPrice }}</span>
+              <span>Booking</span>
+              <span class="bold-text">{{ bookingSummary }}</span>
+            </div>
+            <div class="billing-row">
+              <span>Payment</span>
+              <span class="cash-badge">Cash on service</span>
             </div>
 
             <div class="billing-divider"></div>
-
-            <div class="billing-row">
-              <span>Payment Method</span>
-              <span class="cash-badge">💵 Cash</span>
-            </div>
 
             <div class="billing-row total-row">
-              <span>Total Price</span>
-              <span class="total-price-text">Rs: {{ cartStore.totalCartPrice }}</span>
+              <span>Total</span>
+              <span class="total-price-text">Rs {{ cartStore.totalCartPrice }}</span>
             </div>
-          </div>
 
-          <!-- 2. Problem Image -->
-          <div class="upload-section-card">
-            <h4 class="upload-title">Problem Image</h4>
-            <p class="upload-desc">Add Screenshots</p>
-
-            <div class="upload-box" @click="triggerImageUpload">
-              <input type="file" ref="fileInput" class="hidden-file-input" @change="onFileSelected" accept="image/*" />
-              <div v-if="cartStore.uploadedPreview" class="preview-wrap">
-                <img :src="cartStore.uploadedPreview" class="preview-img" alt="Problem Screenshot" />
-              </div>
-              <div v-else class="upload-placeholder">
-                <span class="plus-large">+</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- 3. Additional Information -->
-          <div class="additional-info-card">
-            <h4 class="info-card-title">Additional Information</h4>
-            <textarea v-model="cartStore.problemMessage" rows="4" class="problem-textarea"
-              placeholder="Problem message..."></textarea>
+            <button type="button" class="btn-summary-order blink-anim" :disabled="isPlacingOrder"
+              @click="handlePlaceOrder">
+              {{ isPlacingOrder ? 'Placing Order...' : 'Place Order' }}
+            </button>
+            <p class="summary-note">No advance payment. Pay after the work is done.</p>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Floating Bottom Right Place Order Action Bar (Exact Screenshot 4) -->
+    <!-- Floating Place Order bar (tablets and phones, where the summary is below the form) -->
     <transition name="floating-slide">
       <div v-if="cartStore.totalCartCount > 0" class="floating-cart-bar">
         <div class="floating-bar-inner">
@@ -147,8 +157,8 @@
             <span class="cart-total-text">Rs {{ cartStore.totalCartPrice }}</span>
           </div>
 
-          <button class="btn-place-order pulse-anim" :disabled="isPlacingOrder" @click="handlePlaceOrder">
-            {{ isPlacingOrder ? 'Placing Order...' : 'Place Order →' }}
+          <button class="btn-place-order blink-anim" :disabled="isPlacingOrder" @click="handlePlaceOrder">
+            {{ isPlacingOrder ? 'Placing Order...' : 'Place Order' }}
           </button>
         </div>
       </div>
@@ -159,8 +169,8 @@
       <div class="success-modal-card">
         <div class="success-icon-circle">✓</div>
         <h2>Booking Order Confirmed!</h2>
-        <p>Your Mr Home Services request has been received. Our team will visit on August {{
-          cartStore.selectedDateNum }}, at {{ cartStore.selectedTimeSlot }}.</p>
+        <p>Your Mr Home Services request has been received. Our team will visit on {{
+          formatBookingDate(cartStore.selectedDate) }}, at {{ cartStore.selectedTimeSlot }}.</p>
 
         <div class="modal-order-details">
           <p v-if="cartStore.lastOrder?.order_number"><strong>Order #:</strong> {{ cartStore.lastOrder.order_number }}</p>
@@ -186,10 +196,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useCartStore, LOCATION_REQUIRED } from '@/stores/cart'
+import { useCartStore, LOCATION_REQUIRED, CheckoutError } from '@/stores/cart'
 import { useAuthStore } from '@/stores/auth'
 import { showPromptAlert, showErrorAlert } from '@/utils/alert'
 import CheckoutLocation from '@/components/CheckoutLocation.vue'
+import BackButton from '@/components/BackButton.vue'
+import { useBookingSlots, formatBookingDate } from '@/composables/useBookingSlots'
 
 const router = useRouter()
 const cartStore = useCartStore()
@@ -199,28 +211,7 @@ const fileInput = ref<any>(null)
 const isPlacingOrder = ref(false)
 const orderError = ref('')
 
-const calendarDays = [
-  { dateNum: 17, dayName: 'Mon' },
-  { dateNum: 18, dayName: 'Tue' },
-  { dateNum: 19, dayName: 'Wed' },
-  { dateNum: 20, dayName: 'Thu' },
-  { dateNum: 21, dayName: 'Fri' },
-  { dateNum: 22, dayName: 'Sat' },
-  { dateNum: 23, dayName: 'Sun' },
-  { dateNum: 24, dayName: 'Mon' },
-  { dateNum: 25, dayName: 'Tue' },
-  { dateNum: 26, dayName: 'Wed' },
-  { dateNum: 27, dayName: 'Thu' },
-  { dateNum: 28, dayName: 'Fri' },
-  { dateNum: 29, dayName: 'Sat' },
-  { dateNum: 30, dayName: 'Sun' },
-  { dateNum: 31, dayName: 'Mon' },
-]
-
-const timeSlots = [
-  '09:00 AM', '09:30 AM', '10:00 AM', '11:00 AM', '11:30 AM',
-  '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM', '02:00 PM'
-]
+const { calendarDays, timeSlots, monthLabel, isSlotPast, hasOpenSlot, selectDate, ensureValidSelection } = useBookingSlots()
 
 function getImageUrl(imagePath?: string | null): string {
   if (!imagePath) return 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=400&auto=format&fit=crop&q=80'
@@ -228,9 +219,13 @@ function getImageUrl(imagePath?: string | null): string {
   return `http://127.0.0.1:8001/storage/${imagePath.replace(/^\//, '')}`
 }
 
-const goBack = () => {
-  router.push('/services')
-}
+// "Thu, 8 Oct · 11:00 AM" for the order summary
+const bookingSummary = computed(() => {
+  if (!cartStore.selectedDate) return 'Choose a time'
+  const date = new Date(`${cartStore.selectedDate}T00:00:00`)
+  const day = date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  return cartStore.selectedTimeSlot ? `${day} · ${cartStore.selectedTimeSlot}` : day
+})
 
 // Address line for the success modal, from the order the backend saved
 const orderAddressText = computed(() => {
@@ -256,6 +251,13 @@ const handlePlaceOrder = async () => {
   orderError.value = ''
   if (!authStore.isAuthenticated) {
     cartStore.openAuthModal()
+    return
+  }
+
+  // The chosen slot may have passed while the page was open
+  if (isSlotPast(cartStore.selectedDate, cartStore.selectedTimeSlot)) {
+    ensureValidSelection()
+    showErrorAlert('Time Slot Passed', `That time is no longer available. We picked the next open slot: ${formatBookingDate(cartStore.selectedDate)}, ${cartStore.selectedTimeSlot}. Please check it and place the order again.`)
     return
   }
 
@@ -289,12 +291,28 @@ const handlePlaceOrder = async () => {
     await cartStore.placeOrder()
   } catch (err: any) {
     orderError.value = err.message || 'Failed to place order. Please try again.'
-    // Backend 422 on latitude/longitude (missing or invalid): ask for the location again on the card
-    if (/location/i.test(orderError.value)) {
+    const fields: Record<string, string> = err instanceof CheckoutError ? err.fields : {}
+
+    // 401: the sign-in popup is already open and the cart is kept
+    if (cartStore.showAuthModal) return
+
+    // 422 on latitude / longitude / location_source: ask for the location again on the card
+    const locationMsg = fields.latitude || fields.longitude || fields.location_source
+    if (locationMsg) {
       cartStore.orderLocation = null
-      showLocationError(orderError.value.replace(/\s*\(and \d+ more errors?\)$/, ''))
+      showLocationError(locationMsg)
       return
     }
+
+    // 422 on address: show it under the address field
+    if (fields.address) {
+      cartStore.addressError = fields.address
+      const field = document.getElementById('checkout-address')
+      field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      field?.focus({ preventScroll: true })
+      return
+    }
+
     await showErrorAlert('Order Placement Failed', orderError.value)
   } finally {
     isPlacingOrder.value = false
@@ -313,60 +331,47 @@ const finishOrder = () => {
 </script>
 
 <style scoped>
+/* The layout already adds the page gutter, so only room for the floating bar is added here */
 .cart-page-container {
-  min-height: 100vh;
-  background: #FFFFFF;
-  padding: 40px 20px 120px;
+  padding-bottom: 80px;
 }
 
 .cart-wrapper {
-  max-width: 1200px;
+  max-width: 1160px;
   margin: 0 auto;
 }
 
 .cart-top-bar {
   display: flex;
   align-items: center;
-  gap: 20px;
-  margin-bottom: 30px;
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
-.btn-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #EFF6FF;
-  color: #1D4ED8;
-  border: 1.5px solid #BFDBFE;
-  border-radius: 30px;
-  padding: 9px 22px;
-  font-weight: 700;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(29, 78, 216, 0.08);
-}
-
-.btn-back:hover {
-  background: #1D4ED8;
-  color: #ffffff;
-  border-color: #1D4ED8;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(29, 78, 216, 0.25);
+.cart-heading {
+  min-width: 0;
 }
 
 .cart-page-title {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 800;
   color: #0F172A;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.cart-page-subtitle {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: #64748B;
 }
 
 .empty-cart-box {
   text-align: center;
-  padding: 80px 20px;
-  background: #F8FAFC;
+  padding: 72px 20px;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
   border-radius: 20px;
-  margin-top: 20px;
 }
 
 .empty-icon {
@@ -396,12 +401,13 @@ const finishOrder = () => {
   cursor: pointer;
 }
 
-/* Grid Layout matching Screenshot 4 */
+/* Two columns: form on the left, order summary on the right */
 .checkout-grid {
   display: grid;
   /* minmax(0, …) stops the wide date strip from stretching the columns past the screen */
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  gap: 28px;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+  align-items: start;
 }
 
 .checkout-left-col,
@@ -409,28 +415,59 @@ const finishOrder = () => {
   min-width: 0;
 }
 
+.checkout-right-col {
+  position: sticky;
+  top: 96px;
+}
+
+/* Every card on the page (the location card is the root of CheckoutLocation and gets this too) */
 .checkout-section-box {
-  background: #F8FAFC;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
   border-radius: 16px;
-  padding: 24px;
-  margin-bottom: 24px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+  padding: 22px 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
 }
 
 .checkout-section-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 800;
   color: #0F172A;
-  margin-bottom: 16px;
+  margin: 0 0 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
 
-.month-label {
+.title-text {
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Numbered step badge, also used in the CheckoutLocation title */
+:deep(.step-no) {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #EFF4FF;
+  color: #1A56DB;
   font-size: 13px;
-  color: #64748B;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.title-meta {
+  font-size: 13px;
   font-weight: 600;
+  color: #64748B;
+  white-space: nowrap;
 }
 
 /* Days Slider Strip */
@@ -438,56 +475,77 @@ const finishOrder = () => {
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding-bottom: 10px;
-  margin-bottom: 16px;
+  padding-bottom: 6px;
+  margin-bottom: 14px;
+  scrollbar-width: thin;
 }
 
 .day-pill {
-  min-width: 52px;
-  padding: 8px;
-  border-radius: 8px;
-  border: 1px solid #CBD5E1;
-  background: white;
+  min-width: 58px;
+  padding: 8px 6px;
+  border-radius: 12px;
+  border: 1px solid #E2E8F0;
+  background: #FFFFFF;
+  color: #0F172A;
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
   cursor: pointer;
   transition: all 0.15s ease;
+}
+
+.day-pill:hover:not(:disabled):not(.active) {
+  border-color: #93B4F5;
+  background: #F5F8FF;
 }
 
 .day-pill.active {
   background: #1A56DB;
   color: white;
   border-color: #1A56DB;
-}
-
-.day-num {
-  font-size: 14px;
-  font-weight: 800;
+  box-shadow: 0 4px 10px rgba(26, 86, 219, 0.25);
 }
 
 .day-name {
   font-size: 11px;
+  font-weight: 600;
+  color: #64748B;
+}
+
+.day-pill.active .day-name {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.day-num {
+  font-size: 17px;
+  font-weight: 800;
 }
 
 /* Time Slots */
 .time-slots-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 8px;
 }
 
 .time-pill {
-  padding: 8px 4px;
-  border-radius: 6px;
-  border: 1px solid #CBD5E1;
-  background: white;
-  font-size: 12px;
+  padding: 10px 4px;
+  border-radius: 10px;
+  border: 1px solid #E2E8F0;
+  background: #FFFFFF;
+  font-size: 13px;
   font-weight: 700;
   color: #334155;
   cursor: pointer;
   text-align: center;
   transition: all 0.15s ease;
+}
+
+.time-pill:hover:not(:disabled):not(.active) {
+  border-color: #93B4F5;
+  background: #F5F8FF;
 }
 
 .time-pill.active {
@@ -496,42 +554,66 @@ const finishOrder = () => {
   border-color: #1A56DB;
 }
 
+/* Slots that have passed today (and days with none left) */
+.time-pill:disabled,
+.day-pill:disabled {
+  background: #F8FAFC;
+  border-color: #EEF2F6;
+  color: #CBD5E1;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+.day-pill:disabled .day-name {
+  color: #CBD5E1;
+}
+
 /* Checkout Items */
 .checkout-items-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
 
 .checkout-item-row {
   display: flex;
   align-items: center;
   gap: 14px;
-  background: white;
-  border: 1px solid #E2E8F0;
-  border-radius: 12px;
-  padding: 12px 16px;
+  padding: 12px 0;
+  border-top: 1px solid #F1F5F9;
+}
+
+.checkout-item-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.checkout-item-row:last-child {
+  padding-bottom: 0;
 }
 
 .checkout-item-img {
-  width: 54px;
-  height: 54px;
-  border-radius: 8px;
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
   object-fit: cover;
+  flex-shrink: 0;
 }
 
 .checkout-item-details {
   flex: 1;
+  min-width: 0;
 }
 
 .checkout-item-details h4 {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: #0F172A;
+  margin: 0 0 4px;
+  line-height: 1.3;
 }
 
 .old-price {
-  font-size: 12px;
+  font-size: 13px;
   color: #94A3B8;
   text-decoration: line-through;
   margin-right: 6px;
@@ -540,79 +622,170 @@ const finishOrder = () => {
 .new-price {
   font-size: 14px;
   font-weight: 800;
-  color: #0F172A;
+  color: #1A56DB;
 }
 
 /* Stepper [- 1 +] */
 .stepper-box {
   display: flex;
   align-items: center;
-  background: #1A56DB;
-  border-radius: 6px;
-  overflow: hidden;
-  color: white;
+  border: 1px solid #DBE4F3;
+  border-radius: 999px;
+  padding: 3px;
+  flex-shrink: 0;
 }
 
 .btn-step {
-  background: transparent;
+  background: #EFF4FF;
   border: none;
-  color: white;
-  width: 28px;
-  height: 28px;
-  font-size: 16px;
-  font-weight: bold;
+  color: #1A56DB;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background 0.15s, color 0.15s;
 }
 
 .btn-step:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: #1A56DB;
+  color: #FFFFFF;
 }
 
 .step-count {
-  font-size: 14px;
+  min-width: 30px;
+  text-align: center;
+  font-size: 15px;
   font-weight: 800;
-  padding: 0 8px;
-  background: white;
-  color: #1A56DB;
-  height: 28px;
-  display: flex;
-  align-items: center;
+  color: #0F172A;
 }
 
-/* Right Column Cards */
-.billing-card {
+/* Problem details: photo tile + description */
+.problem-details {
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.upload-box {
+  width: 92px;
+  min-height: 92px;
   background: #F8FAFC;
+  border: 2px dashed #CBD5E1;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.upload-box:hover,
+.upload-box:focus-visible {
+  border-color: #1A56DB;
+  background: #F5F8FF;
+  outline: none;
+}
+
+.upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: #64748B;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.plus-large {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.upload-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.problem-textarea {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #CBD5E1;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  color: #0F172A;
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.problem-textarea:focus {
+  border-color: #1A56DB;
+  box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.12);
+}
+
+/* Order summary */
+.billing-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
   border-radius: 16px;
-  padding: 24px;
-  margin-bottom: 24px;
+  padding: 22px 24px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
 .billing-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 800;
   color: #0F172A;
-  margin-bottom: 16px;
+  margin: 0 0 16px;
 }
 
 .billing-row {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   font-size: 14px;
   color: #475569;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+.billing-row span:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.billing-item-name em {
+  font-style: normal;
+  color: #94A3B8;
+  white-space: nowrap;
 }
 
 .billing-divider {
   height: 1px;
   background: #E2E8F0;
-  margin: 12px 0;
+  margin: 14px 0;
 }
 
 .bold-text {
-  font-weight: 800;
+  font-weight: 700;
   color: #0F172A;
 }
 
@@ -622,109 +795,71 @@ const finishOrder = () => {
 }
 
 .total-row {
+  align-items: center;
   font-size: 16px;
   font-weight: 800;
   color: #0F172A;
-  margin-top: 8px;
+  margin-bottom: 18px;
 }
 
 .total-price-text {
   color: #0F172A;
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 800;
 }
 
-/* Upload Section */
-.upload-section-card {
-  background: white;
-  border: 1px solid #E2E8F0;
-  border-radius: 16px;
-  padding: 20px;
-  margin-bottom: 24px;
-}
-
-.upload-title {
-  font-size: 16px;
-  font-weight: 800;
-  color: #0F172A;
-  margin-bottom: 2px;
-}
-
-.upload-desc {
-  font-size: 13px;
-  color: #64748B;
-  margin-bottom: 12px;
-}
-
-.upload-box {
-  width: 70px;
-  height: 70px;
-  background: #F8FAFC;
-  border: 2px dashed #CBD5E1;
+.btn-summary-order {
+  width: 100%;
+  padding: 14px;
+  border: none;
   border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: linear-gradient(135deg, #1A56DB 0%, #1E40AF 100%);
+  color: #FFFFFF;
+  font-size: 16px;
+  font-weight: 800;
   cursor: pointer;
-  overflow: hidden;
+  box-shadow: 0 8px 20px rgba(26, 86, 219, 0.3);
+  transition: transform 0.15s, box-shadow 0.15s;
 }
 
-.hidden-file-input {
-  display: none;
+.btn-summary-order:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(26, 86, 219, 0.35);
 }
 
-.plus-large {
-  font-size: 24px;
+.btn-summary-order:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.summary-note {
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: 12px;
   color: #64748B;
 }
 
-.preview-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-/* Additional Info */
-.additional-info-card {
-  background: white;
-  border: 1px solid #E2E8F0;
-  border-radius: 16px;
-  padding: 20px;
-}
-
-.info-card-title {
-  font-size: 16px;
-  font-weight: 800;
-  color: #0F172A;
-  margin-bottom: 10px;
-}
-
-.problem-textarea {
-  width: 100%;
-  border: 1px solid #CBD5E1;
-  border-radius: 10px;
-  padding: 12px;
-  font-size: 14px;
-  outline: none;
-  resize: vertical;
-}
-
-/* Floating Bottom Right Place Order Bar (Exact Screenshot 4) */
+/* Floating Place Order bar: only where the summary is not beside the form */
 .floating-cart-bar {
+  display: none;
   position: fixed;
-  right: 32px;
-  bottom: 32px;
+  left: 20px;
+  right: 20px;
+  bottom: 20px;
   z-index: 1050;
 }
 
 .floating-bar-inner {
-  background: #1A56DB;
+  max-width: 560px;
+  margin: 0 auto;
+  background: linear-gradient(135deg, #1A56DB 0%, #1E40AF 100%);
   color: white;
   border-radius: 14px;
-  padding: 8px 12px 8px 16px;
+  padding: 8px 8px 8px 14px;
   display: flex;
   align-items: center;
-  gap: 20px;
+  justify-content: space-between;
+  gap: 16px;
   box-shadow: 0 10px 30px rgba(26, 86, 219, 0.4);
 }
 
@@ -737,10 +872,11 @@ const finishOrder = () => {
 .cart-count-badge {
   background: rgba(255, 255, 255, 0.2);
   color: white;
-  border: 1px solid white;
-  width: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  min-width: 24px;
   height: 24px;
-  border-radius: 4px;
+  padding: 0 4px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -754,31 +890,44 @@ const finishOrder = () => {
 }
 
 .btn-place-order {
-  background: transparent;
-  color: white;
+  background: #FFFFFF;
+  color: #1A56DB;
   border: none;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 800;
   cursor: pointer;
-  padding: 6px 12px;
-  border-radius: 20px;
+  padding: 10px 20px;
+  border-radius: 10px;
 }
 
-.pulse-anim {
-  animation: subtlePulse 2s infinite;
+/* Blink: the label fades in and out and the button glows, to draw attention to placing the order */
+.blink-anim:not(:disabled) {
+  animation: blinkGlow 1.2s ease-in-out infinite;
 }
 
-@keyframes subtlePulse {
-  0% {
-    transform: scale(1);
-  }
+.btn-place-order.blink-anim:not(:disabled) {
+  animation: blinkText 1.2s ease-in-out infinite;
+}
 
-  50% {
-    transform: scale(1.04);
-  }
+.floating-bar-inner:has(.blink-anim:not(:disabled)) {
+  animation: blinkGlow 1.2s ease-in-out infinite;
+}
 
-  100% {
-    transform: scale(1);
+@keyframes blinkText {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes blinkGlow {
+  0%, 100% { box-shadow: 0 8px 20px rgba(26, 86, 219, 0.3), 0 0 0 0 rgba(59, 130, 246, 0.55); }
+  50% { box-shadow: 0 8px 20px rgba(26, 86, 219, 0.3), 0 0 0 8px rgba(59, 130, 246, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blink-anim:not(:disabled),
+  .btn-place-order.blink-anim:not(:disabled),
+  .floating-bar-inner:has(.blink-anim) {
+    animation: none;
   }
 }
 
@@ -852,41 +1001,54 @@ const finishOrder = () => {
   width: 100%;
 }
 
-@media (max-width: 900px) {
+/* Tablets and phones: one column, summary under the form, floating bar for the order button */
+@media (max-width: 960px) {
   .checkout-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
+  }
+
+  .checkout-right-col {
+    position: static;
+  }
+
+  .btn-summary-order {
+    display: none;
+  }
+
+  .floating-cart-bar {
+    display: block;
   }
 }
 
 @media (max-width: 600px) {
   .cart-page-container {
-    padding: 20px 12px 140px;
+    padding-bottom: 150px;
   }
 
   .cart-top-bar {
-    flex-direction: column;
-    align-items: flex-start;
     gap: 12px;
+    margin-bottom: 16px;
+    padding-right: 52px; /* keeps the subtitle clear of the floating WhatsApp button */
   }
 
   .cart-page-title {
-    font-size: 20px;
+    font-size: 21px;
+  }
+
+  .cart-page-subtitle {
+    font-size: 13px;
   }
 
   .checkout-section-box,
-  .billing-card,
-  .upload-section-card,
-  .additional-info-card {
+  .billing-card {
     padding: 16px 14px;
-    border-radius: 12px;
-    margin-bottom: 16px;
+    border-radius: 14px;
+    margin-bottom: 14px;
   }
 
   .checkout-section-title {
     font-size: 16px;
-    flex-wrap: wrap;
-    gap: 6px;
   }
 
   .days-slider {
@@ -899,67 +1061,61 @@ const finishOrder = () => {
   }
 
   .day-pill {
-    flex-shrink: 0;
-    min-width: 48px;
+    min-width: 52px;
   }
 
   .time-slots-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .time-pill {
-    padding: 10px 4px;
-  }
-
   .checkout-item-row {
-    padding: 10px;
     gap: 10px;
   }
 
   .checkout-item-img {
-    width: 44px;
-    height: 44px;
-    flex-shrink: 0;
-  }
-
-  .checkout-item-details {
-    min-width: 0;
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
   }
 
   .checkout-item-details h4 {
-    font-size: 13px;
-    line-height: 1.3;
+    font-size: 14px;
   }
 
-  .stepper-box {
-    flex-shrink: 0;
+  .btn-step {
+    width: 28px;
+    height: 28px;
   }
 
-  .billing-row {
-    gap: 12px;
-    font-size: 13px;
+  .step-count {
+    min-width: 26px;
   }
 
-  .billing-row span:last-child {
-    text-align: right;
-    white-space: nowrap;
+  .problem-details {
+    flex-direction: column;
+  }
+
+  .upload-box {
+    width: 100%;
+    min-height: 72px;
+  }
+
+  .upload-placeholder {
+    flex-direction: row;
+    gap: 8px;
   }
 
   .problem-textarea {
-    box-sizing: border-box;
     font-size: 16px; /* 16px keeps iOS from zooming in on focus */
+  }
+
+  .billing-row {
+    font-size: 13px;
   }
 
   .floating-cart-bar {
     left: 12px;
     right: 12px;
-    width: calc(100% - 24px);
-  }
-
-  .floating-bar-inner {
-    justify-content: space-between;
-    width: 100%;
-    padding: 8px 12px 8px 16px;
   }
 }
 

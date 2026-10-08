@@ -231,7 +231,7 @@
 
               <div class="booking-card-actions">
                 <button class="btn-track-details" @click="viewBooking(booking)">
-                  View Details & Tracking →
+                  View Details & Tracking
                 </button>
                 <router-link to="/services" class="btn-rebook-outline">
                   Rebook

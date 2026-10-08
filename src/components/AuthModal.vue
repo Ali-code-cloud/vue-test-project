@@ -93,7 +93,7 @@
           </form>
 
           <div class="otp-action-links">
-            <a href="#" @click.prevent="cartStore.authModalStep = 'welcome'" class="blue-link">← Sign in with OTP instead</a>
+            <a href="#" @click.prevent="cartStore.authModalStep = 'welcome'" class="blue-link">Sign in with OTP instead</a>
           </div>
 
           <div class="modal-footer-links">
@@ -387,7 +387,8 @@ const handleModalPasswordLogin = async () => {
     if (authStore.isAuthenticated) {
       showSuccessToast('Logged in successfully!')
       cartStore.closeAuthModal()
-      router.push('/dashboard')
+      // Signing in from checkout or the contact form: stay so the order/message can be finished
+      if (!['/cart', '/contact'].includes(route.path)) router.push('/dashboard')
     } else {
       authError.value = res?.message || 'Invalid credentials.'
       showErrorToast(authError.value)
