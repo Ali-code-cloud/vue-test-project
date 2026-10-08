@@ -70,6 +70,18 @@ const routes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/checkout/:orderId',
+    component: DefaultLayout,
+    children: [
+      {
+        path: '',
+        name: 'checkout',
+        component: () => import('@/views/CheckoutView.vue'),
+        props: true
+      }
+    ]
+  },
+  {
     path: '/contact',
     component: DefaultLayout,
     children: [
