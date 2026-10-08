@@ -2,10 +2,6 @@
     <div class="auth-layout">
         <div class="auth-container">
             <div class="auth-card">
-                <div class="auth-header">
-                    <h2>Welcome Back</h2>
-                    <p>Sign in to your account</p>
-                </div>
                 <router-view />
             </div>
         </div>
@@ -13,7 +9,22 @@
 </template>
 
 <script setup lang="ts">
-// No header, no footer - clean layout for authentication
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+
+const route = useRoute()
+
+const headerTitle = computed(() => {
+    if (route.path.includes('register')) return 'Create Account'
+    if (route.path.includes('forgot-password')) return 'Reset Password'
+    return 'Welcome Back'
+})
+
+const headerSub = computed(() => {
+    if (route.path.includes('register')) return 'Join thousands of happy homeowners today'
+    if (route.path.includes('forgot-password')) return 'Verify your phone/email to set a new password'
+    return 'Sign in with OTP or password to access your dashboard'
+})
 </script>
 
 <style scoped>
@@ -22,34 +33,62 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #42b883 0%, #2d8f6f 100%);
+    background: linear-gradient(135deg, #0F172A 0%, #1E3A8A 50%, #1A56DB 100%);
+    padding: 20px;
 }
 
 .auth-container {
     width: 100%;
-    max-width: 420px;
-    padding: 20px;
+    max-width: 680px;
 }
 
 .auth-card {
-    background: white;
-    border-radius: 16px;
-    padding: 40px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    background: #ffffff;
+    border-radius: 28px;
+    padding: 56px 40px 48px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
 }
 
 .auth-header {
     text-align: center;
-    margin-bottom: 30px;
+    margin-bottom: 24px;
+}
+
+.auth-logo {
+    text-decoration: none;
+    display: inline-block;
+    margin-bottom: 12px;
+}
+
+.logo-bold {
+    font-size: 28px;
+    font-weight: 800;
+    color: #1A56DB;
+}
+
+.logo-sub {
+    font-size: 14px;
+    font-weight: 600;
+    color: #64748B;
+    text-transform: uppercase;
+    letter-spacing: 1px;
 }
 
 .auth-header h2 {
-    font-size: 28px;
-    color: #1a202c;
-    margin-bottom: 8px;
+    font-size: 24px;
+    font-weight: 800;
+    color: #0F172A;
+    margin-bottom: 6px;
 }
 
 .auth-header p {
-    color: #718096;
+    color: #64748B;
+    font-size: 14px;
+}
+
+@media (max-width: 480px) {
+    .auth-card {
+        padding: 24px 20px;
+    }
 }
 </style>

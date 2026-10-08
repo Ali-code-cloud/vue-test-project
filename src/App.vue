@@ -1,9 +1,10 @@
 <template>
   <router-view />
+  <AuthModal />
 </template>
 
 <script setup lang="ts">
-// App.vue is just a container - router-view handles everything
+import AuthModal from '@/components/AuthModal.vue'
 </script>
 
 <style>

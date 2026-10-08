@@ -17,9 +17,9 @@
 </template>
 
 <script setup lang="ts">
-import Header from '@components/Header.vue'
-import Footer from '@components/Footer.vue'
-import HeroSection from '@views/HeroSection.vue';
+import Header from '@/components/Header.vue'
+import Footer from '@/components/Footer.vue'
+import HeroSection from '@/views/HeroSection.vue';
 </script>
 
 <style scoped>
