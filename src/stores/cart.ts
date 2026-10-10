@@ -10,6 +10,8 @@ export const MAX_QUANTITY = 20
 /** Checkout failure; `fields` holds the backend's per-field messages (address, customer_phone, latitude, ...) */
 export class CheckoutError extends Error {
   fields: Record<string, string>
+  /** 422 because the phone is missing or not verified by SMS code yet */
+  phoneVerificationRequired = false
   constructor(message: string, fields: Record<string, string> = {}) {
     super(message)
     this.name = 'CheckoutError'
@@ -29,7 +31,9 @@ function checkoutErrorFrom(body: any): CheckoutError {
   const message = generic && Object.keys(fields).length
     ? [...new Set(Object.values(fields))].join(' ')
     : String(body?.message || 'Failed to place order. Please try again.').replace(/\s*\(and \d+ more errors?\)$/, '')
-  return new CheckoutError(message, fields)
+  const error = new CheckoutError(message, fields)
+  error.phoneVerificationRequired = body?.phone_verification_required === true
+  return error
 }
 
 export interface ServiceItem {
@@ -52,6 +56,8 @@ export interface OrderLocation {
   latitude: number
   longitude: number
   source: 'live' | 'manual'
+  /** GPS accuracy radius in metres (live only); shown on the map, not sent with the order */
+  accuracy?: number
 }
 
 export const LOCATION_REQUIRED = 'Location is required. Please share your live location or pin your address on the map.'
@@ -107,6 +113,8 @@ export const useCartStore = defineStore('cart', {
     // Auth & Modal States
     showAuthModal: false,
     authModalStep: 'welcome' as 'welcome' | 'otp' | 'register' | 'login',
+    // 'phone': a signed-in customer without a phone confirms one by SMS code before ordering
+    authModalPurpose: 'login' as 'login' | 'phone',
     userPhoneNumber: '',
     otpDigits: ['', '', '', '', '', ''],
     
@@ -483,6 +491,14 @@ export const useCartStore = defineStore('cart', {
 
     // Auth Modals
     openAuthModal() {
+      this.authModalPurpose = 'login'
+      this.authModalStep = 'welcome'
+      this.showAuthModal = true
+    },
+
+    /** Same "Verify Your Phone" popup, for a signed-in customer whose account has no (verified) phone */
+    openPhoneVerifyModal() {
+      this.authModalPurpose = 'phone'
       this.authModalStep = 'welcome'
       this.showAuthModal = true
     },

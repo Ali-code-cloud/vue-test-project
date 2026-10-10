@@ -75,8 +75,13 @@ export function cacheKeyFor(url: string, params?: any): string {
   return `${url}_${JSON.stringify(params || {})}`
 }
 
+// On an https:// page (npm run dev:https) the API is called on the page's own address and the Vite
+// /api proxy forwards it to Laravel; calling http://...:8001 directly from https would be blocked by CORS.
+const SAME_ORIGIN_API = window.location.protocol === 'https:' ? [window.location.origin] : []
+
 // Set: on localhost the last entry would repeat localhost:8001 and get probed twice
 export const API_BASE_URLS = [...new Set([
+  ...SAME_ORIGIN_API,
   'http://127.0.0.1:8001',
   'http://mrhomeservices.test:8001',
   'http://localhost:8001',
@@ -84,7 +89,7 @@ export const API_BASE_URLS = [...new Set([
   `http://${window.location.hostname}:8001`
 ])]
 
-let activeBaseUrl = 'http://127.0.0.1:8001'
+let activeBaseUrl = API_BASE_URLS[0]!
 
 export function getActiveBaseUrl(): string {
   return activeBaseUrl

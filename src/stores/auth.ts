@@ -13,6 +13,7 @@ export interface User {
   name: string
   email: string | null // null for Facebook accounts registered with a phone number
   phone?: string | null // null for new social logins; checkout asks for it
+  phone_verified_at?: string | null // set once the phone is confirmed by SMS code; checkout requires it
   address?: string | null
   role?: string
   avatar?: string
@@ -196,6 +197,41 @@ export const useAuthStore = defineStore('auth', () => {
     return resData
   }
 
+  /**
+   * Checkout phone check: text a code to the phone (logged-in user)
+   * POST /api/user/auth/phone/send-otp { phone }
+   */
+  async function sendPhoneOtp(phone: string) {
+    const { data } = await api.post('/api/user/auth/phone/send-otp', { phone })
+    return data?.data as { phone: string; resend_after_seconds?: number } | undefined
+  }
+
+  /**
+   * Confirm the code; the backend saves the phone to the profile as verified
+   * POST /api/user/auth/phone/verify-otp { phone, otp }
+   */
+  async function verifyPhoneOtp(phone: string, otp: string) {
+    const { data } = await api.post('/api/user/auth/phone/verify-otp', { phone, otp })
+    const verifiedUser = data?.data?.user
+    if (verifiedUser) updateProfile(verifiedUser)
+    return verifiedUser as User | undefined
+  }
+
+  /**
+   * Reload the profile (GET /api/user/auth/me) and return whether its phone is verified by SMS code.
+   * Keeps the session on failure and answers from the saved profile.
+   */
+  async function refreshUser(): Promise<boolean> {
+    try {
+      const { data } = await api.get('/api/user/auth/me')
+      if (data?.data?.user) updateProfile(data.data.user)
+      if (typeof data?.data?.phone_verified === 'boolean') return data.data.phone_verified
+    } catch {
+      // Offline or slow: keep the saved profile
+    }
+    return !!user.value?.phone && !!user.value?.phone_verified_at
+  }
+
   function updateProfile(updatedData: Partial<User>) {
     if (user.value) {
       user.value = { ...user.value, ...updatedData }
@@ -311,6 +347,9 @@ export const useAuthStore = defineStore('auth', () => {
     startSocialLogin,
     loginWithToken,
     updateProfile,
+    sendPhoneOtp,
+    verifyPhoneOtp,
+    refreshUser,
     logout
   }
 })

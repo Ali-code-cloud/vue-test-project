@@ -361,28 +361,18 @@
         class="floating-cart-bar"
         :class="{ 'bounce-pop': cartStore.buttonJustAnimated }"
       >
-        <div class="floating-bar-inner">
-          <div class="cart-summary-group">
+        <!-- The whole bar is the button, not only its label -->
+        <button type="button" class="floating-bar-inner"
+          @click="currentViewMode === 'services_list' ? goToCheckout() : placeOrder()">
+          <span class="cart-summary-group">
             <span class="cart-count-badge">{{ cartStore.totalCartCount }}</span>
             <span class="cart-total-text">Rs {{ cartStore.totalCartPrice }}</span>
-          </div>
+          </span>
 
-          <button 
-            v-if="currentViewMode === 'services_list'" 
-            class="btn-floating-action blink-anim" 
-            @click="goToCheckout"
-          >
-            Continue
-          </button>
-
-          <button 
-            v-else 
-            class="btn-floating-action blink-anim" 
-            @click="placeOrder"
-          >
-            Place Order
-          </button>
-        </div>
+          <span class="btn-floating-action blink-anim">
+            {{ currentViewMode === 'services_list' ? 'Continue' : 'Place Order' }}
+          </span>
+        </button>
       </div>
     </transition>
 
@@ -1174,6 +1164,13 @@ const finishOrder = () => {
   gap: 20px;
   box-shadow: 0 10px 30px rgba(26, 86, 219, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.2);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.floating-bar-inner:focus-visible {
+  outline: 3px solid #93C5FD;
+  outline-offset: 2px;
 }
 
 .cart-summary-group {
@@ -1207,13 +1204,12 @@ const finishOrder = () => {
   border: none;
   font-size: 15px;
   font-weight: 700;
-  cursor: pointer;
   padding: 6px 12px;
   border-radius: 20px;
   transition: transform 0.2s ease;
 }
 
-.btn-floating-action:hover {
+.floating-bar-inner:hover .btn-floating-action {
   transform: translateX(4px);
 }
 

@@ -23,7 +23,7 @@
     <button v-if="cartStore.locationMode === 'live' && !cartStore.orderLocation" type="button" class="btn-locate"
       :disabled="isLocating" @click="locate">
       <span class="locate-icon">{{ isLocating ? '⏳' : '📍' }}</span>
-      {{ isLocating ? 'Getting your location...' : 'Use my current location' }}
+      {{ isLocating ? 'Finding your exact location...' : 'Use my current location' }}
     </button>
 
     <div v-else class="map-wrap">
@@ -32,9 +32,9 @@
           ? 'Drag the pin or tap the map if it is not exactly at your home.'
           : 'Tap the map to drop a pin on your home. You can drag it to adjust.' }}
       </p>
-      <LocationMap :model-value="cartStore.orderLocation" :center="mapCenter" @pick="onPick" />
+      <LocationMap :model-value="cartStore.orderLocation" :center="mapCenter" :accuracy="liveAccuracy" @pick="onPick" />
       <div v-if="cartStore.orderLocation" class="map-footer">
-        <span class="coords">{{ coordsText }}</span>
+        <span class="coords">{{ coordsText }}<template v-if="liveAccuracy"> · accurate to {{ formatAccuracy(liveAccuracy) }}</template></span>
         <div class="map-actions">
           <a :href="mapsLink" target="_blank" rel="noopener" class="map-link">Open in Maps</a>
           <button type="button" class="map-action" :disabled="isLocating" @click="locate">
@@ -44,6 +44,18 @@
         </div>
       </div>
     </div>
+
+    <!-- GPS readings get better over a few seconds; show progress and let the customer stop early -->
+    <p v-if="isLocating" class="locate-progress">
+      <span>{{ bestAccuracy ? `Improving accuracy... currently ±${formatAccuracy(bestAccuracy)}` : 'Waiting for your device location...' }}</span>
+      <button v-if="bestAccuracy" type="button" class="map-action" @click="finishLocating">Use this location</button>
+    </p>
+
+    <p v-if="accuracyNote" class="accuracy-note">{{ accuracyNote }}</p>
+
+    <p v-if="isGeocoding" class="address-hint">Finding your address...</p>
+    <p v-else-if="addressFilled" class="address-hint filled">Address filled from your location. Please add your house number if it is missing.</p>
+    <p v-else-if="geocodeFailed" class="address-hint">We could not find the address for this location. Please type it below.</p>
 
     <p v-if="locationNotice" class="location-error">{{ locationNotice }}</p>
     <p v-else-if="cartStore.locationError" class="location-error">{{ cartStore.locationError }}</p>
@@ -76,11 +88,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useCartStore } from '@/stores/cart'
 import { useAuthStore } from '@/stores/auth'
 import { useCities } from '@/composables/useCities'
 import LocationMap from '@/components/LocationMap.vue'
+import { reverseGeocode } from '@/utils/reverseGeocode'
 
 // Optional step number shown before the title (the cart page numbers its sections)
 defineProps<{ step?: number }>()
@@ -90,6 +103,21 @@ const authStore = useAuthStore()
 const { cities, isLoading: citiesLoading } = useCities()
 
 const isLocating = ref(false)
+// Best (smallest) accuracy radius seen while locating, in metres
+const bestAccuracy = ref<number | null>(null)
+
+// Accuracy targets for live location, in metres
+const GOOD_ACCURACY = 30 // stop as soon as a reading is this close
+const OK_ACCURACY = 100 // good enough once SETTLE_MS has passed
+const SETTLE_MS = 5000
+const MAX_WAIT_MS = 12000
+// Wider than this is a network / IP guess, not GPS (common on computers): ask the customer to move the pin
+const APPROXIMATE_ACCURACY = 1000
+
+let watchId: number | null = null
+let settleTimer: ReturnType<typeof setTimeout> | undefined
+let maxTimer: ReturnType<typeof setTimeout> | undefined
+let bestPosition: GeolocationPosition | null = null
 // GPS problems (denied, timed out, unsupported); separate from the "location required" error
 const locationNotice = ref('')
 
@@ -115,54 +143,192 @@ const coordsText = computed(() => {
   return loc ? `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}` : ''
 })
 
+/** Accuracy circle only for a live reading; a moved pin is exactly where the customer put it */
+const liveAccuracy = computed(() => {
+  const loc = cartStore.orderLocation
+  return loc?.source === 'live' && loc.accuracy ? loc.accuracy : null
+})
+
+function formatAccuracy(metres: number): string {
+  if (metres < 1000) return `${Math.round(metres)} m`
+  return `${(metres / 1000).toFixed(metres >= 10000 ? 0 : 1)} km`
+}
+
+// Only warn when the reading is a rough network / IP guess; normal readings show no message
+const accuracyNote = computed(() => {
+  const acc = liveAccuracy.value
+  if (!acc || isLocating.value || acc <= APPROXIMATE_ACCURACY) return ''
+  return `Your device could only find an approximate area (about ${formatAccuracy(acc)} wide). This happens on devices without GPS, such as most computers. Please drag the pin or tap the map on your home, or open this page on your phone for an exact location.`
+})
+
 const mapsLink = computed(() => {
   const loc = cartStore.orderLocation
   return loc ? `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}` : '#'
 })
 
+// Address auto-fill from the location. Values we filled in (or took from the profile) may be replaced
+// by the next lookup; anything the customer typed is left alone.
+const isGeocoding = ref(false)
+const addressFilled = ref(false)
+const geocodeFailed = ref(false)
+const autoFilled = { street: '', town: '' }
+let geocodeTimer: ReturnType<typeof setTimeout> | undefined
+let geocodeAbort: AbortController | null = null
+
 onMounted(() => {
   // Start from the address saved on the profile
   if (!cartStore.selectedAddress.trim() && authStore.user?.address) {
     cartStore.selectedAddress = authStore.user.address
+    autoFilled.street = authStore.user.address
   }
 })
 
-// Any location clears the "location required" error
-watch(() => cartStore.orderLocation, (loc) => {
-  if (loc) {
-    cartStore.locationError = ''
-    locationNotice.value = ''
-  }
+onBeforeUnmount(() => {
+  clearTimeout(geocodeTimer)
+  geocodeAbort?.abort()
+  stopWatching()
 })
 
+// Any location clears the "location required" error and fills the address
+watch(() => cartStore.orderLocation, (loc, oldLoc) => {
+  if (!loc) return
+  cartStore.locationError = ''
+  locationNotice.value = ''
+  if (oldLoc && oldLoc.latitude === loc.latitude && oldLoc.longitude === loc.longitude) return
+  // Wait a moment so dragging the pin does one lookup, not many
+  clearTimeout(geocodeTimer)
+  // A rough network guess (often the wrong town) would fill in a wrong address; wait for the customer to move the pin
+  if (loc.source === 'live' && (loc.accuracy ?? 0) > APPROXIMATE_ACCURACY) {
+    addressFilled.value = false
+    geocodeFailed.value = false
+    return
+  }
+  geocodeTimer = setTimeout(() => fillAddressFrom(loc.latitude, loc.longitude), 500)
+})
+
+async function fillAddressFrom(latitude: number, longitude: number) {
+  geocodeAbort?.abort()
+  const controller = new AbortController()
+  geocodeAbort = controller
+  isGeocoding.value = true
+  addressFilled.value = false
+  geocodeFailed.value = false
+  const found = await reverseGeocode(latitude, longitude, controller.signal)
+  if (controller.signal.aborted) return
+  isGeocoding.value = false
+  if (!found) {
+    geocodeFailed.value = true
+    return
+  }
+
+  const canReplace = (current: string, auto: string) => !current.trim() || current.trim() === auto.trim()
+  let changed = false
+
+  if (found.street && canReplace(cartStore.selectedAddress, autoFilled.street)) {
+    cartStore.selectedAddress = found.street
+    autoFilled.street = found.street
+    cartStore.addressError = ''
+    changed = true
+  }
+  if (found.town && canReplace(cartStore.selectedTown, autoFilled.town)) {
+    cartStore.selectedTown = found.town
+    autoFilled.town = found.town
+    changed = true
+  }
+  // Only pick a city we serve (the list comes from the API)
+  const city = cities.value.find((c) => c.toLowerCase() === found.city.toLowerCase())
+  if (city && cartStore.selectedCity !== city) {
+    cartStore.selectedCity = city
+    changed = true
+  }
+  addressFilled.value = changed
+}
+
+/**
+ * Live location: watch the device position for a few seconds and keep the most accurate reading.
+ * The first reading is often a rough network guess; the GPS readings that follow are much closer.
+ * maximumAge 0 never reuses an old position.
+ */
 function locate() {
   locationNotice.value = ''
-  if (!navigator.geolocation || !window.isSecureContext) {
+  // Browsers only share GPS on secure pages (https:// or localhost)
+  if (!window.isSecureContext) {
+    locationNotice.value = 'Live location only works on a secure (https://) page. Please pin your address on the map.'
+    cartStore.locationMode = 'manual'
+    return
+  }
+  if (!navigator.geolocation) {
     locationNotice.value = 'Live location is not available in this browser. Please pin your address on the map.'
     cartStore.locationMode = 'manual'
     return
   }
+
+  stopWatching()
   isLocating.value = true
-  navigator.geolocation.getCurrentPosition(
+  bestPosition = null
+  bestAccuracy.value = null
+  const startedAt = Date.now()
+
+  watchId = navigator.geolocation.watchPosition(
     (pos) => {
-      isLocating.value = false
-      cartStore.locationMode = 'live'
-      cartStore.orderLocation = {
-        latitude: Number(pos.coords.latitude.toFixed(7)),
-        longitude: Number(pos.coords.longitude.toFixed(7)),
-        source: 'live'
+      if (!bestPosition || pos.coords.accuracy < bestPosition.coords.accuracy) {
+        bestPosition = pos
+        bestAccuracy.value = pos.coords.accuracy
       }
+      if (import.meta.env.DEV) {
+        console.info('[location]', pos.coords.latitude, pos.coords.longitude, `±${Math.round(pos.coords.accuracy)} m`)
+      }
+      const acc = bestPosition.coords.accuracy
+      if (acc <= GOOD_ACCURACY || (acc <= OK_ACCURACY && Date.now() - startedAt >= SETTLE_MS)) finishLocating()
     },
     (err) => {
-      isLocating.value = false
-      // Denied or timed out: let the customer pin it on the map instead
-      locationNotice.value = err.code === err.PERMISSION_DENIED
+      // A slow reading: keep waiting while there is time left, unless access was refused
+      if (err.code !== err.PERMISSION_DENIED && Date.now() - startedAt < MAX_WAIT_MS) return
+      if (bestPosition) return finishLocating()
+      failLocating(err.code === err.PERMISSION_DENIED
         ? 'Could not read your live location. Please allow location access or pin your address on the map.'
-        : 'Could not get your location right now. Please try again or pin your address on the map.'
-      if (!cartStore.orderLocation) cartStore.locationMode = 'manual'
+        : 'Could not get your location right now. Please try again or pin your address on the map.')
     },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    { enableHighAccuracy: true, maximumAge: 0, timeout: MAX_WAIT_MS }
   )
+
+  settleTimer = setTimeout(() => {
+    if (bestPosition && bestPosition.coords.accuracy <= OK_ACCURACY) finishLocating()
+  }, SETTLE_MS)
+  maxTimer = setTimeout(() => {
+    if (bestPosition) finishLocating()
+    else failLocating('Could not get your location right now. Please try again or pin your address on the map.')
+  }, MAX_WAIT_MS)
+}
+
+/** Use the best reading so far (also the "Use this location" button) */
+function finishLocating() {
+  const pos = bestPosition
+  stopWatching()
+  isLocating.value = false
+  if (!pos) return
+  cartStore.locationMode = 'live'
+  cartStore.orderLocation = {
+    latitude: Number(pos.coords.latitude.toFixed(7)),
+    longitude: Number(pos.coords.longitude.toFixed(7)),
+    source: 'live',
+    accuracy: Math.round(pos.coords.accuracy)
+  }
+}
+
+/** Denied or no reading: let the customer pin it on the map instead */
+function failLocating(message: string) {
+  stopWatching()
+  isLocating.value = false
+  locationNotice.value = message
+  if (!cartStore.orderLocation) cartStore.locationMode = 'manual'
+}
+
+function stopWatching() {
+  if (watchId !== null) navigator.geolocation.clearWatch(watchId)
+  watchId = null
+  clearTimeout(settleTimer)
+  clearTimeout(maxTimer)
 }
 
 // Tapping the map or dragging the pin makes it a manual pin
@@ -182,6 +348,8 @@ function selectManual() {
 
 function clearLocation() {
   cartStore.orderLocation = null
+  addressFilled.value = false
+  geocodeFailed.value = false
 }
 </script>
 
@@ -235,6 +403,43 @@ function clearLocation() {
 .location-card.location-card-error {
   border-color: #FCA5A5 !important;
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.08);
+}
+
+/* Address auto-fill status */
+.address-hint {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #64748B;
+}
+
+.address-hint.filled {
+  color: #047857;
+}
+
+/* Live location progress and accuracy */
+.locate-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #EFF6FF;
+  color: #1E40AF;
+  font-size: 13px;
+}
+
+.accuracy-note {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  background: #FFF7ED;
+  color: #9A3412;
+  border: 1px solid #FED7AA;
 }
 
 /* Toggle */

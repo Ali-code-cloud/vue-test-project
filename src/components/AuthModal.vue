@@ -12,7 +12,8 @@
             </svg>
           </div>
           <h2 class="modal-title">Verify Your Phone</h2>
-          <p class="modal-subtitle">Enter your Pakistani phone number to receive a secure verification code.</p>
+          <p v-if="isPhoneMode" class="modal-subtitle">{{ authStore.user?.phone ? 'Confirm your phone number' : 'Add your phone number' }} to place your order. We will send a 6-digit code by SMS.</p>
+          <p v-else class="modal-subtitle">Enter your Pakistani phone number to receive a secure verification code.</p>
 
           <form @submit.prevent="handleEmailSubmit" class="auth-form" novalidate>
             <div v-if="authError" class="warning-text">{{ authError }}</div>
@@ -29,12 +30,14 @@
             </button>
           </form>
 
-          <SocialLoginButtons :redirect-to="route.fullPath" />
+          <template v-if="!isPhoneMode">
+            <SocialLoginButtons :redirect-to="route.fullPath" />
 
-          <p class="signin-line">
-            Already have a password?
-            <a href="#" class="blue-link" @click.prevent="cartStore.authModalStep = 'login'">Sign In</a>
-          </p>
+            <p class="signin-line">
+              Already have a password?
+              <a href="#" class="blue-link" @click.prevent="cartStore.authModalStep = 'login'">Sign In</a>
+            </p>
+          </template>
 
           <p class="terms-line">
             By continuing you agree to our
@@ -113,9 +116,12 @@
 
             <!-- 6 Digit Underline Inputs -->
             <div class="otp-inputs-row">
-              <input v-for="(digit, index) in 6" :key="index" type="text" maxlength="1" v-model="otpDigits[index]"
-                @input="onDigitInput(index, $event)" @keydown.delete="onDigitDelete(index, $event)"
-                :ref="el => inputRefs[index] = el" class="otp-underline-input" inputmode="numeric" />
+              <!-- No maxlength: a pasted or SMS auto-filled code arrives in one box and is spread over all six -->
+              <input v-for="(digit, index) in 6" :key="index" type="text" v-model="otpDigits[index]"
+                @input="onDigitInput(index, $event)" @paste="onDigitPaste(index, $event)"
+                @keydown.delete="onDigitDelete(index, $event)"
+                :ref="el => inputRefs[index] = el" class="otp-underline-input" inputmode="numeric"
+                :autocomplete="index === 0 ? 'one-time-code' : 'off'" :aria-label="'Digit ' + (index + 1)" />
             </div>
 
             <div v-if="showDigitWarning" class="warning-text">
@@ -191,7 +197,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useCartStore } from '@/stores/cart'
 import { useAuthStore, getApiError, isPhoneIdentifier, getPhoneError, formatPhone } from '@/stores/auth'
@@ -222,6 +228,8 @@ const regPassword = ref('')
 const regConfirmPassword = ref('')
 
 const step1Error = ref('')
+// Signed in already: the popup only confirms the phone for the order (see cartStore.openPhoneVerifyModal)
+const isPhoneMode = computed(() => cartStore.authModalPurpose === 'phone')
 const signedUpWithPhone = computed(() => isPhoneIdentifier(cartStore.userPhoneNumber || ''))
 const regErrors = ref({
   name: '',
@@ -244,8 +252,8 @@ const clearRegErrors = () => {
 
 let timerInterval: number | null = null
 
-const startTimer = () => {
-  resendTimer.value = 60
+const startTimer = (seconds = 60) => {
+  resendTimer.value = seconds
   if (timerInterval) clearInterval(timerInterval)
   timerInterval = window.setInterval(() => {
     if (resendTimer.value > 0) {
@@ -265,6 +273,15 @@ watch(() => cartStore.authModalStep, (newStep) => {
     clearRegErrors()
     // The verified phone number is the account's phone; no need to type it again
     if (signedUpWithPhone.value) regPhone.value = cartStore.userPhoneNumber.trim()
+  }
+})
+
+// Phone mode: start with the number saved on the profile, if any
+watch(() => cartStore.showAuthModal, (open) => {
+  if (open && isPhoneMode.value) {
+    emailInput.value = authStore.user?.phone || ''
+    authError.value = ''
+    step1Error.value = ''
   }
 })
 
@@ -299,13 +316,26 @@ const handleEmailSubmit = async () => {
 
   isSending.value = true
   try {
-    await authStore.requestOtp(phone)
+    if (isPhoneMode.value) {
+      await authStore.sendPhoneOtp(phone)
+    } else {
+      await authStore.requestOtp(phone)
+    }
     cartStore.proceedToOtp(phone)
     startTimer()
     showSuccessToast('OTP code sent successfully!')
   } catch (e: any) {
+    // 429 for the number a code was just sent to: that code still works, so go back to the code screen
+    const retryAfter = Number(e?.response?.data?.retry_after)
+    if (e?.response?.status === 429 && retryAfter > 0 && phone === cartStore.userPhoneNumber) {
+      cartStore.proceedToOtp(phone)
+      startTimer(retryAfter)
+      await nextTick()
+      authError.value = 'We already sent a code to this number. Please enter it below.'
+      return
+    }
+    // Shown in the popup only (no extra toast with the same text)
     authError.value = getApiError(e)
-    showErrorToast(authError.value)
   } finally {
     isSending.value = false
   }
@@ -317,23 +347,52 @@ const handleResendOtp = async () => {
   authError.value = ''
   isSending.value = true
   try {
-    await authStore.requestOtp(cartStore.userPhoneNumber)
+    if (isPhoneMode.value) {
+      await authStore.sendPhoneOtp(cartStore.userPhoneNumber)
+    } else {
+      await authStore.requestOtp(cartStore.userPhoneNumber)
+    }
+    otpDigits.value = ['', '', '', '', '', '']
     startTimer()
     showSuccessToast('OTP resent successfully!')
   } catch (e: any) {
+    const retryAfter = Number(e?.response?.data?.retry_after)
+    if (e?.response?.status === 429 && retryAfter > 0) startTimer(retryAfter)
     authError.value = getApiError(e)
-    showErrorToast(authError.value)
   } finally {
     isSending.value = false
   }
 }
 
+/** Puts digits into the boxes from `start`, then focuses the next empty box (or the last one) */
+function fillDigits(start: number, text: string) {
+  const digits = text.replace(/\D/g, '').slice(0, 6 - start).split('')
+  digits.forEach((d, i) => { otpDigits.value[start + i] = d })
+  inputRefs.value[Math.min(start + digits.length, 5)]?.focus()
+}
+
 const onDigitInput = (index: number, event: any) => {
-  const val = event.target.value
-  if (val && index < 5) {
-    inputRefs.value[index + 1]?.focus()
+  const digits = String(event.target.value || '').replace(/\D/g, '')
+  if (digits.length > 1) {
+    // Several digits at once: a pasted code or SMS auto-fill
+    otpDigits.value[index] = ''
+    fillDigits(digits.length >= 6 ? 0 : index, digits)
+  } else {
+    otpDigits.value[index] = digits
+    if (digits && index < 5) inputRefs.value[index + 1]?.focus()
   }
   showDigitWarning.value = false
+  authError.value = ''
+}
+
+const onDigitPaste = (index: number, event: ClipboardEvent) => {
+  const text = event.clipboardData?.getData('text') || ''
+  if (!/\d/.test(text)) return
+  event.preventDefault()
+  // A full code always starts in the first box
+  fillDigits(text.replace(/\D/g, '').length >= 6 ? 0 : index, text)
+  showDigitWarning.value = false
+  authError.value = ''
 }
 
 const onDigitDelete = (index: number, event: any) => {
@@ -345,9 +404,22 @@ const onDigitDelete = (index: number, event: any) => {
 /** Step 2: Verify the 6-digit OTP via real API */
 const handleVerifyOtp = async () => {
   authError.value = ''
+  // Each wrong try counts against the code (5 allowed), so an incomplete code is not sent
+  if (!isOtpComplete.value) {
+    showDigitWarning.value = true
+    inputRefs.value[otpDigits.value.findIndex(d => !d.trim())]?.focus()
+    return
+  }
   isVerifying.value = true
   try {
     const otp = otpDigits.value.join('')
+    if (isPhoneMode.value) {
+      // Saves the phone to the profile as verified; the cart page then places the order
+      await authStore.verifyPhoneOtp(cartStore.userPhoneNumber, otp)
+      showSuccessToast('Phone number verified!')
+      cartStore.closeAuthModal()
+      return
+    }
     const data = await authStore.verifyOtp(cartStore.userPhoneNumber, otp)
     if (data?.token || authStore.isAuthenticated) {
       showSuccessToast('Authenticated successfully!')
@@ -357,8 +429,11 @@ const handleVerifyOtp = async () => {
       cartStore.authModalStep = 'register'
     }
   } catch (e: any) {
+    // Shown in the popup only; clear the boxes so the code can be typed again
     authError.value = getApiError(e)
-    showErrorToast(authError.value)
+    otpDigits.value = ['', '', '', '', '', '']
+    await nextTick()
+    inputRefs.value[0]?.focus()
   } finally {
     isVerifying.value = false
   }

@@ -138,9 +138,9 @@
               <span class="total-price-text">Rs {{ cartStore.totalCartPrice }}</span>
             </div>
 
-            <button type="button" class="btn-summary-order blink-anim" :disabled="isPlacingOrder"
+            <button type="button" class="btn-summary-order blink-anim" :disabled="isBusy"
               @click="handlePlaceOrder">
-              {{ isPlacingOrder ? 'Placing Order...' : 'Place Order' }}
+              {{ orderButtonLabel }}
             </button>
             <p class="summary-note">No advance payment. Pay after the work is done.</p>
           </div>
@@ -151,16 +151,15 @@
     <!-- Floating Place Order bar (tablets and phones, where the summary is below the form) -->
     <transition name="floating-slide">
       <div v-if="cartStore.totalCartCount > 0" class="floating-cart-bar">
-        <div class="floating-bar-inner">
-          <div class="cart-summary-group">
+        <!-- The whole bar is the button, not only its label -->
+        <button type="button" class="floating-bar-inner" :disabled="isBusy" @click="handlePlaceOrder">
+          <span class="cart-summary-group">
             <span class="cart-count-badge">{{ cartStore.totalCartCount }}</span>
             <span class="cart-total-text">Rs {{ cartStore.totalCartPrice }}</span>
-          </div>
+          </span>
 
-          <button class="btn-place-order blink-anim" :disabled="isPlacingOrder" @click="handlePlaceOrder">
-            {{ isPlacingOrder ? 'Placing Order...' : 'Place Order' }}
-          </button>
-        </div>
+          <span class="btn-place-order" :class="{ 'blink-anim': !isBusy }">{{ orderButtonLabel }}</span>
+        </button>
       </div>
     </transition>
 
@@ -194,11 +193,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCartStore, LOCATION_REQUIRED, CheckoutError } from '@/stores/cart'
 import { useAuthStore } from '@/stores/auth'
-import { showPromptAlert, showErrorAlert } from '@/utils/alert'
+import { showErrorAlert } from '@/utils/alert'
 import CheckoutLocation from '@/components/CheckoutLocation.vue'
 import BackButton from '@/components/BackButton.vue'
 import { useBookingSlots, formatBookingDate } from '@/composables/useBookingSlots'
@@ -209,7 +208,35 @@ const authStore = useAuthStore()
 
 const fileInput = ref<any>(null)
 const isPlacingOrder = ref(false)
+// Checking the phone with GET /me before the order (not placing it yet)
+const isCheckingPhone = ref(false)
+const isBusy = computed(() => isPlacingOrder.value || isCheckingPhone.value)
+const orderButtonLabel = computed(() => {
+  if (isPlacingOrder.value) return 'Placing Order...'
+  if (isCheckingPhone.value) return 'Please wait...'
+  return 'Place Order'
+})
 const orderError = ref('')
+// Set while the phone popup is open from Place Order; the order continues once the phone is verified
+const orderWaitingForPhone = ref(false)
+
+// The saved profile may be old (e.g. phone added on another device)
+onMounted(() => {
+  if (authStore.isAuthenticated) authStore.refreshUser()
+})
+
+watch(() => cartStore.showAuthModal, (open) => {
+  if (open || !orderWaitingForPhone.value) return
+  orderWaitingForPhone.value = false
+  // Closed after verifying: place the order; closed without verifying: nothing happens
+  if (authStore.user?.phone && authStore.user?.phone_verified_at) handlePlaceOrder()
+})
+
+/** Account without a (verified) phone: show the "Verify Your Phone" popup */
+function askForPhone() {
+  orderWaitingForPhone.value = true
+  cartStore.openPhoneVerifyModal()
+}
 
 const { calendarDays, timeSlots, monthLabel, isSlotPast, hasOpenSlot, selectDate, ensureValidSelection } = useBookingSlots()
 
@@ -254,6 +281,15 @@ const handlePlaceOrder = async () => {
     return
   }
 
+  // Signed in: orders need a phone verified by SMS code (GET /me -> phone_verified); if not, verify it first
+  isCheckingPhone.value = true
+  const phoneVerified = await authStore.refreshUser()
+  isCheckingPhone.value = false
+  if (!phoneVerified) {
+    askForPhone()
+    return
+  }
+
   // The chosen slot may have passed while the page was open
   if (isSlotPast(cartStore.selectedDate, cartStore.selectedTimeSlot)) {
     ensureValidSelection()
@@ -275,17 +311,6 @@ const handlePlaceOrder = async () => {
     return
   }
 
-  const userPhone = (authStore.user?.phone || cartStore.userPhoneNumber || '').trim()
-  if (!userPhone) {
-    const result = await showPromptAlert('Phone Number Required', 'Please confirm your phone number before placing an order:', cartStore.userPhoneNumber)
-    if (result.isConfirmed && result.value && result.value.trim()) {
-      cartStore.userPhoneNumber = result.value.trim()
-    } else {
-      await showErrorAlert('Phone Required', 'Phone number is required. Please confirm your phone number before placing an order.')
-      return
-    }
-  }
-
   isPlacingOrder.value = true
   try {
     await cartStore.placeOrder()
@@ -301,6 +326,13 @@ const handlePlaceOrder = async () => {
     if (locationMsg) {
       cartStore.orderLocation = null
       showLocationError(locationMsg)
+      return
+    }
+
+    // 422 phone_verification_required: verify the phone by SMS code, then the order continues
+    if ((err instanceof CheckoutError && err.phoneVerificationRequired) || fields.customer_phone) {
+      authStore.updateProfile({ phone_verified_at: null })
+      askForPhone()
       return
     }
 
@@ -861,6 +893,19 @@ const finishOrder = () => {
   justify-content: space-between;
   gap: 16px;
   box-shadow: 0 10px 30px rgba(26, 86, 219, 0.4);
+  width: 100%;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.floating-bar-inner:disabled {
+  cursor: wait;
+}
+
+.floating-bar-inner:focus-visible {
+  outline: 3px solid #93C5FD;
+  outline-offset: 2px;
 }
 
 .cart-summary-group {
@@ -895,7 +940,6 @@ const finishOrder = () => {
   border: none;
   font-size: 15px;
   font-weight: 800;
-  cursor: pointer;
   padding: 10px 20px;
   border-radius: 10px;
 }
